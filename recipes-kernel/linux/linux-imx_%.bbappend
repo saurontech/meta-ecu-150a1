@@ -23,7 +23,6 @@ do_configure:append() {
         ;;
     esac
     cp ${WORKDIR}/${ADV_ECU_FOLDER}/rtc-ht1382.c ${S}/drivers/rtc/ || exit 1
-    cp ${WORKDIR}/${ADV_ECU_FOLDER}/board-name.h ${S}/drivers/char/ || exit 1
     cp ${WORKDIR}/${ADV_ECU_FOLDER}/ecu_board.c ${S}/drivers/char/ || exit 1
     cp ${WORKDIR}/${ADV_ECU_FOLDER}/usb/f81604.c ${S}/drivers/net/can/usb/ || exit 1
 }

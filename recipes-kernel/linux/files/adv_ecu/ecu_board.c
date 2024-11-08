@@ -5,14 +5,11 @@
 #include <linux/kernel.h>
 #include <linux/proc_fs.h>
 #include <linux/uaccess.h>
-
 #include <linux/fs.h>
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
 #include <linux/gpio.h>
 #include <linux/delay.h>
-
-#include "board-name.h"
 
 static char board_name[32] = { 0 };
 

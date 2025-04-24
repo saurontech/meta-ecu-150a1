@@ -299,7 +299,7 @@
 	status = "okay";
 
 	st33htpi: st33htpi@2e {
-		compatible = "st,st33htpm-i2c";
+		compatible = "st,st33zp24-i2c";
 		reg = <0x2E>;
         clock-frequency = <400000>;
 	};		

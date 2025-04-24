@@ -299,7 +299,7 @@
 	status = "okay";
 
 	st33htpi: st33htpi@2e {
-		compatible = "tcg,tpm-tis-i2c";
+		compatible = "infineon,slb9673";
 		reg = <0x2E>;
         clock-frequency = <400000>;
 	};		

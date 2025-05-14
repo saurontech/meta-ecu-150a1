@@ -147,12 +147,24 @@ static int ht1382_probe(struct i2c_client *client)
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C))
 		return -ENODEV;
 
+	/* WP off */
+	reg = 0;
+	error = ht1382_write(dev, &reg, HT1382_ST1, 1);
+	if(error){
+		dev_err(dev, "WP off failed");
+	}
+	
 	error = ht1382_read(dev, &reg, HT1382_SECONDS, 1);
 	if (!error && (reg & HT1382_STOP)) {
 		dev_warn(dev, "Oscillator was halted. Restarting...\n");
 		reg &= ~HT1382_STOP;
 		error = ht1382_write(dev, &reg, HT1382_SECONDS, 1);
 	}
+	
+	/* WP on */
+	reg = 0x80;
+	error = ht1382_write(dev, &reg, HT1382_ST1, 1);
+	
 	if (error)
 		return error;
 

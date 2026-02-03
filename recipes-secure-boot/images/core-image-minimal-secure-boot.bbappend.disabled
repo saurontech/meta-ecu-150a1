@@ -1,0 +1,58 @@
+# ═══════════════════════════════════════════════════════════════════
+# HAB Secure Boot: Replace unsigned Image with signed Image in rootfs
+# ═══════════════════════════════════════════════════════════════════
+# Problem: kernel-image package installs unsigned Image to rootfs /boot
+#          but we need the HAB-signed Image for secure boot.
+#
+# Solution: After rootfs is created, replace /boot/Image with signed version.
+
+# Ensure linux-imx-signature is built before the image
+do_rootfs[depends] += "linux-imx-signature:do_deploy"
+
+# Ensure imx-boot-signature is built before wic generation
+do_image_wic[depends] += "imx-boot-signature:do_deploy"
+
+# Explicitly update imx-boot symlink to signed version before wic generation
+IMAGE_PREPROCESS_COMMAND:append:imx8mq-ecu150a1 = " ensure_signed_imx_boot;"
+
+ensure_signed_imx_boot() {
+    SIGNED_BOOT="${DEPLOY_DIR_IMAGE}/signed-imx-boot-${MACHINE}-sd.bin-flash_evk"
+    BOOT_LINK="${DEPLOY_DIR_IMAGE}/imx-boot"
+    
+    if [ -e "${SIGNED_BOOT}" ]; then
+        bbnote "Updating imx-boot symlink to signed version: ${SIGNED_BOOT}"
+        ln -sf "${SIGNED_BOOT}" "${BOOT_LINK}"
+    else
+        bbwarn "Signed imx-boot not found at ${SIGNED_BOOT}"
+    fi
+}
+
+# Replace unsigned Image with signed Image in rootfs
+ROOTFS_POSTPROCESS_COMMAND:append:imx8mq-ecu150a1 = " replace_with_signed_image;"
+
+replace_with_signed_image() {
+    SIGNED_IMAGE="${DEPLOY_DIR_IMAGE}/signed-${KERNEL_IMAGETYPE}-${MACHINE}.bin"
+    
+    if [ -e "${SIGNED_IMAGE}" ]; then
+        # Find and replace the Image in /boot
+        if [ -e "${IMAGE_ROOTFS}/boot/${KERNEL_IMAGETYPE}" ]; then
+            bbnote "Replacing unsigned ${KERNEL_IMAGETYPE} with signed version in rootfs"
+            
+            # Get the actual filename (in case Image is a symlink)
+            ORIG_IMAGE=$(readlink -f "${IMAGE_ROOTFS}/boot/${KERNEL_IMAGETYPE}" 2>/dev/null || echo "${IMAGE_ROOTFS}/boot/${KERNEL_IMAGETYPE}")
+            
+            # Remove original files
+            rm -f "${IMAGE_ROOTFS}/boot/${KERNEL_IMAGETYPE}"
+            rm -f "${ORIG_IMAGE}"
+            
+            # Copy signed image
+            install -m 0644 "${SIGNED_IMAGE}" "${IMAGE_ROOTFS}/boot/${KERNEL_IMAGETYPE}"
+            
+            bbnote "Installed signed ${KERNEL_IMAGETYPE} ($(stat -c%s ${SIGNED_IMAGE}) bytes) to rootfs"
+        else
+            bbwarn "No ${KERNEL_IMAGETYPE} found in rootfs /boot, skipping replacement"
+        fi
+    else
+        bbwarn "Signed Image not found at ${SIGNED_IMAGE}, using unsigned Image"
+    fi
+}

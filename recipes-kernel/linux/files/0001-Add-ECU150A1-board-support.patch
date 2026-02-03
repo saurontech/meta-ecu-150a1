@@ -1,0 +1,1231 @@
+From 4ff425b64bd14835e81e9ee49a94ff201f9d162f Mon Sep 17 00:00:00 2001
+From: invalid_git config <unknown@unknown>
+Date: Wed, 24 Dec 2025 10:08:03 +0000
+Subject: [PATCH] Add ECU150A1 board support
+
+---
+ .../dts/freescale/fsl-imx8mq-ecu150a1.dts     | 802 ++++++++++++++++++
+ drivers/char/Kconfig                          |   6 +
+ drivers/char/Makefile                         |   1 +
+ drivers/char/ecu_board.c                      | 134 +++
+ drivers/rtc/Kconfig                           |   9 +
+ drivers/rtc/Makefile                          |   1 +
+ drivers/rtc/rtc-ht1382.c                      | 206 +++++
+ 7 files changed, 1159 insertions(+)
+ create mode 100755 arch/arm64/boot/dts/freescale/fsl-imx8mq-ecu150a1.dts
+ create mode 100644 drivers/char/ecu_board.c
+ create mode 100644 drivers/rtc/rtc-ht1382.c
+
+diff --git a/arch/arm64/boot/dts/freescale/fsl-imx8mq-ecu150a1.dts b/arch/arm64/boot/dts/freescale/fsl-imx8mq-ecu150a1.dts
+new file mode 100755
+index 000000000000..32203896adb6
+--- /dev/null
++++ b/arch/arm64/boot/dts/freescale/fsl-imx8mq-ecu150a1.dts
+@@ -0,0 +1,802 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * Copyright 2017 NXP
++ * Copyright (C) 2017-2018 Pengutronix, Lucas Stach <kernel@pengutronix.de>
++ */
++
++/dts-v1/;
++
++#include <dt-bindings/usb/pd.h>
++#include "imx8mq.dtsi"
++
++/ {
++	model = "NXP i.MX8MQ ECU150A1";
++	compatible = "fsl,imx8mq-evk", "fsl,imx8mq";
++
++	chosen {
++		bootargs = "console=ttymxc0,115200 earlycon=ec_imx6q,0x30860000,115200";
++		stdout-path = &uart1;
++	};
++
++	memory@80000000 {
++		device_type = "memory";
++		reg = <0x00000000 0x80000000 0 0x40000000>;
++	};
++
++	resmem: reserved-memory {
++		#address-cells = <2>;
++		#size-cells = <2>;
++		ranges;
++
++		/* global autoconfigured region for contiguous allocations */
++		linux,cma {
++			compatible = "shared-dma-pool";
++			reusable;
++			size = <0 0x3c000000>;
++			alloc-ranges = <0 0x96000000 0 0x3c000000>;
++			linux,cma-default;
++		};
++	};
++
++	my_board {
++        compatible = "custom,ecu-board";
++        board_name = "ECU150A1";
++    };
++
++	pcie0_refclk: pcie0-refclk {
++		compatible = "fixed-clock";
++		#clock-cells = <0>;
++		clock-frequency = <100000000>;
++	};
++
++	pcie1_refclk: pcie1-refclk {
++		compatible = "fixed-clock";
++		#clock-cells = <0>;
++		clock-frequency = <100000000>;
++	};
++
++	reg_usdhc2_vmmc: regulator-vsd-3v3 {
++		pinctrl-names = "default";
++		pinctrl-0 = <&pinctrl_reg_usdhc2>;
++		compatible = "regulator-fixed";
++		regulator-name = "VSD_3V3";
++		regulator-min-microvolt = <3300000>;
++		regulator-max-microvolt = <3300000>;
++		//gpio = <&gpio2 19 GPIO_ACTIVE_HIGH>;
++		//off-on-delay-us = <20000>;
++		//enable-active-high;
++	};
++
++	buck2_reg: regulator-buck2 {
++		pinctrl-names = "default";
++		pinctrl-0 = <&pinctrl_buck2>;
++		compatible = "regulator-gpio";
++		regulator-name = "vdd_arm";
++		regulator-min-microvolt = <900000>;
++		regulator-max-microvolt = <1000000>;
++		gpios = <&gpio1 13 GPIO_ACTIVE_HIGH>;
++		states = <1000000 0x0
++			  900000 0x1>;
++		regulator-boot-on;
++		regulator-always-on;
++	};
++
++	/*thermal-zones {
++		cpu-thermal {
++			polling-delay-passive = <250>;
++			polling-delay = <2000>;
++			thermal-sensors = <&tmu 0>;
++			trips {
++				cpu_alert0: trip0 {
++					temperature = <85000>;
++					hysteresis = <2000>;
++					type = "passive";
++				};
++				cpu_crit0: trip1 {
++					temperature = <105000>;
++					hysteresis = <2000>;
++					type = "critical";
++				};
++			};
++		};
++	};*/
++
++	i2c5: i2c5_gpio {
++		#address-cells = <1>;
++		#size-cells = <0>;
++		compatible = "i2c-gpio";
++		sda-gpios = <&gpio1 5 (GPIO_ACTIVE_HIGH|GPIO_OPEN_DRAIN)>; /*SDA*/
++		scl-gpios = <&gpio1 4 (GPIO_ACTIVE_HIGH|GPIO_OPEN_DRAIN)>; /*SCL*/
++		i2c-gpio,delay-us = <4>;
++
++		status = "okay";
++		ht1382: rtc@68 {
++			compatible = "htk,ht1382";
++			reg = <0x68>; /* 7-bit address format 0xDO >> 1 | r/w = 0x68 */
++		};
++	};
++
++	// rtc1 {
++	// 	pinctrl-names = "default";
++	// 	pinctrl-0 = <&ht1382_rtc_pins>;
++	// 	status = "okay";
++
++	// 	compatible = "holtek,ht1382-rtc";
++		
++	// 	interrupt-parent = <&gpio1>;
++	// 	interrupts = <6 8>;	/* gpio1_6 */
++	// 	ht1382-i2c-interface;
++
++	// 	/*gpios note: order [0]rtc_dio, [1] rtc_clk */
++	// 	gpios =	<&gpio1 5 GPIO_ACTIVE_HIGH>,  /* GPIO_HT1382_DIO */
++	// 	 		<&gpio1 4 GPIO_ACTIVE_HIGH>;  /* GPIO_HT1382_CLK */
++	// };
++
++	// leds {
++	// 	pinctrl-names = "default";
++	// 	pinctrl-0 = <&user_leds>;
++
++	// 	compatible = "gpio-leds";
++
++	// 	led1 {
++	// 		label = "imx8:green:run";
++	// 		gpios = <&gpio5 3 GPIO_ACTIVE_HIGH>;
++	// 		default-state = "off";
++	// 	};
++	// };
++};
++&gpio4 {
++	gpio-line-names = "", "", "", "", "", "", "", "", "", "", "", "WDT_EN", "","","", "", "", "", "", "", "WDT";
++};
++
++&gpio5 {
++	gpio-line-names = "", "", "", "PL1", "PL2", "PL3";
++};
++
++&A53_0 {
++	cpu-supply = <&buck2_reg>;
++};
++
++&A53_1 {
++	cpu-supply = <&buck2_reg>;
++};
++
++&A53_2 {
++	cpu-supply = <&buck2_reg>;
++};
++
++&A53_3 {
++	cpu-supply = <&buck2_reg>;
++};
++
++&fec1 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pinctrl_fec1>;
++	phy-mode = "rgmii-id";
++	phy-handle = <&ethphy0>;
++	fsl,magic-packet;
++	status = "okay";
++
++	mdio {
++		#address-cells = <1>;
++		#size-cells = <0>;
++
++		ethphy0: ethernet-phy@0 {
++			compatible = "ethernet-phy-ieee802.3-c22";
++			reg = <0>;
++			qca,disable-smarteee;
++			vddio-supply = <&vddh>;
++
++			vddh: vddh-regulator {
++			};
++		};
++	};
++};
++
++&i2c1 {
++	clock-frequency = <100000>;
++	pinctrl-names = "default";
++	pinctrl-0 = <&pinctrl_i2c1>;
++	status = "okay";
++
++	pmic@8 {
++		compatible = "fsl,pfuze100";
++		fsl,pfuze-support-disable-sw;
++		reg = <0x8>;
++
++		regulators {
++			sw1a_reg: sw1ab {
++				regulator-min-microvolt = <825000>;
++				regulator-max-microvolt = <1100000>;
++			};
++
++			sw1c_reg: sw1c {
++				regulator-min-microvolt = <825000>;
++				regulator-max-microvolt = <1100000>;
++			};
++
++			sw2_reg: sw2 {
++				regulator-min-microvolt = <1100000>;
++				regulator-max-microvolt = <1100000>;
++				regulator-always-on;
++			};
++
++			sw3a_reg: sw3ab {
++				regulator-min-microvolt = <825000>;
++				regulator-max-microvolt = <1100000>;
++				regulator-always-on;
++			};
++
++			sw4_reg: sw4 {
++				regulator-min-microvolt = <1800000>;
++				regulator-max-microvolt = <1800000>;
++				regulator-always-on;
++			};
++
++			swbst_reg: swbst {
++				regulator-min-microvolt = <5000000>;
++				regulator-max-microvolt = <5150000>;
++			};
++
++			snvs_reg: vsnvs {
++				regulator-min-microvolt = <1000000>;
++				regulator-max-microvolt = <3000000>;
++				regulator-always-on;
++			};
++
++			vref_reg: vrefddr {
++				regulator-always-on;
++			};
++
++			vgen1_reg: vgen1 {
++				regulator-min-microvolt = <800000>;
++				regulator-max-microvolt = <1550000>;
++			};
++
++			vgen2_reg: vgen2 {
++				regulator-min-microvolt = <850000>;
++				regulator-max-microvolt = <975000>;
++				regulator-always-on;
++			};
++
++			vgen3_reg: vgen3 {
++				regulator-min-microvolt = <1675000>;
++				regulator-max-microvolt = <1975000>;
++				regulator-always-on;
++			};
++
++			vgen4_reg: vgen4 {
++				regulator-min-microvolt = <1625000>;
++				regulator-max-microvolt = <1875000>;
++				regulator-always-on;
++			};
++
++			vgen5_reg: vgen5 {
++				regulator-min-microvolt = <3075000>;
++				regulator-max-microvolt = <3625000>;
++				regulator-always-on;
++			};
++
++			vgen6_reg: vgen6 {
++				regulator-min-microvolt = <1800000>;
++				regulator-max-microvolt = <3300000>;
++			};
++		};
++	};
++};
++
++&i2c2 {
++	clock-frequency = <100000>;
++	pinctrl-names = "default";
++	pinctrl-0 = <&pinctrl_i2c2>;
++	status = "okay";
++};
++
++&i2c3 {
++	clock-frequency = <400000>;
++	pinctrl-names = "default";
++	pinctrl-0 = <&pinctrl_i2c3>;
++	status = "okay";
++
++	st33htpi: st33htpi@2e {
++		compatible = "infineon,slb9673";
++		reg = <0x2E>;
++        clock-frequency = <400000>;
++	};		
++};
++
++&pcie0 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pinctrl_pcie0>;
++	disable-gpio = <&gpio1 10 GPIO_ACTIVE_LOW>;
++	reset-gpio = <&gpio1 12 GPIO_ACTIVE_LOW>;
++	clocks = <&clk IMX8MQ_CLK_PCIE1_ROOT>,
++		 <&clk IMX8MQ_CLK_PCIE1_AUX>,
++		 <&clk IMX8MQ_CLK_PCIE1_PHY>,
++		 <&pcie0_refclk>;
++	clock-names = "pcie", "pcie_aux", "pcie_phy", "pcie_bus";
++	vph-supply = <&vgen5_reg>;
++	assigned-clocks = <&clk IMX8MQ_CLK_PCIE1_AUX>,
++			  <&clk IMX8MQ_CLK_PCIE1_PHY>,
++			  <&clk IMX8MQ_CLK_PCIE1_CTRL>;
++	assigned-clock-rates = <10000000>, <100000000>, <250000000>;
++	assigned-clock-parents = <&clk IMX8MQ_SYS2_PLL_50M>,
++				 <&clk IMX8MQ_SYS2_PLL_100M>,
++				 <&clk IMX8MQ_SYS2_PLL_250M>;
++	hard-wired = <1>;
++	vph-supply = <&vgen5_reg>;
++	l1ss-disabled;
++	status = "okay";
++};
++
++&pcie1 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pinctrl_pcie1>;
++	disable-gpio = <&gpio3 20 GPIO_ACTIVE_LOW>;
++	reset-gpio = <&gpio3 23 GPIO_ACTIVE_LOW>;
++	clocks = <&clk IMX8MQ_CLK_PCIE2_ROOT>,
++		 <&clk IMX8MQ_CLK_PCIE2_AUX>,
++		 <&clk IMX8MQ_CLK_PCIE2_PHY>,
++		 <&pcie1_refclk>;
++	clock-names = "pcie", "pcie_aux", "pcie_phy", "pcie_bus";
++	assigned-clocks = <&clk IMX8MQ_CLK_PCIE2_AUX>,
++			  <&clk IMX8MQ_CLK_PCIE2_PHY>,
++			  <&clk IMX8MQ_CLK_PCIE2_CTRL>;
++	assigned-clock-rates = <10000000>, <100000000>, <250000000>;
++	assigned-clock-parents = <&clk IMX8MQ_SYS2_PLL_50M>,
++				 <&clk IMX8MQ_SYS2_PLL_100M>,
++				 <&clk IMX8MQ_SYS2_PLL_250M>;
++	vph-supply = <&vgen5_reg>;
++	l1ss-disabled;
++	status = "okay";
++};
++
++&pgc_gpu {
++	power-supply = <&sw1a_reg>;
++};
++
++&pgc_vpu {
++	power-supply = <&sw1c_reg>;
++};
++
++&uart1 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pinctrl_uart1>;
++	assigned-clocks = <&clk IMX8MQ_CLK_UART1>;
++	assigned-clock-parents = <&clk IMX8MQ_CLK_25M>;
++	status = "okay";
++};
++
++
++&uart2 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pinctrl_uart2>;
++	assigned-clocks = <&clk IMX8MQ_CLK_UART2>;
++	assigned-clock-parents = <&clk IMX8MQ_CLK_25M>;
++	status = "okay";
++};
++
++&uart3 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pinctrl_uart3>;
++	assigned-clocks = <&clk IMX8MQ_CLK_UART3>;
++	assigned-clock-parents = <&clk IMX8MQ_SYS1_PLL_80M>;
++	status = "okay";
++	
++	rts-gpios = <&gpio1 0 GPIO_ACTIVE_HIGH>;
++	rs485-rts-active-low;
++   	linux,rs485-enabled-at-boot-time;
++	rs485-rx-during-tx;
++	/delete-property/ dmas;
++	/delete-property/ dma-names;
++};
++
++&uart4 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pinctrl_uart4>;
++	assigned-clocks = <&clk IMX8MQ_CLK_UART4>;
++	assigned-clock-parents = <&clk IMX8MQ_SYS1_PLL_80M>;
++	status = "okay";
++	
++	rts-gpios = <&gpio1 1 GPIO_ACTIVE_HIGH>;
++	rs485-rts-active-low;
++   	linux,rs485-enabled-at-boot-time;
++	rs485-rx-during-tx;
++	/delete-property/ dmas;
++	/delete-property/ dma-names;
++};
++
++&usb3_phy0 {
++	status = "okay";
++};
++
++&usb_dwc3_0 {
++	dr_mode = "host";
++	hnp-disable;
++	srp-disable;
++	adp-disable;
++	status = "okay";
++};
++
++&usb3_phy1 {
++	status = "okay";
++};
++
++&usb_dwc3_1 {
++	dr_mode = "host";
++	status = "okay";
++};
++
++&ecspi1 {
++    #address-cells = <1>;
++    #size-cells = <0>;
++    fsl,spi-num-chipselects = <1>;
++    pinctrl-names = "default";
++    pinctrl-0 = <&pinctrl_ecspi1 &pinctrl_ecspi1_cs>;
++    cs-gpios = <&gpio5 9 GPIO_ACTIVE_LOW>;
++    status = "okay";
++
++	fm25@0 {
++		#address-cells = <1>;
++		#size-cells = <1>;
++
++		compatible = "cypress,fm25"; 
++		reg = <0>; /* cs_num*/
++		spi-max-frequency = <48000000>;
++		status = "okay";
++	};
++};
++
++&ecspi2 {
++    #address-cells = <1>;
++    #size-cells = <0>;
++    fsl,spi-num-chipselects = <1>;
++    pinctrl-names = "default";
++    pinctrl-0 = <&pinctrl_ecspi2 &pinctrl_ecspi2_cs>;
++    cs-gpios = <&gpio5 13 GPIO_ACTIVE_LOW>;
++    status = "okay";
++};
++
++&usdhc1 {
++	assigned-clocks = <&clk IMX8MQ_CLK_USDHC1>;
++	assigned-clock-rates = <400000000>;
++	pinctrl-names = "default", "state_100mhz", "state_200mhz";
++	pinctrl-0 = <&pinctrl_usdhc1>;
++	pinctrl-1 = <&pinctrl_usdhc1_100mhz>;
++	pinctrl-2 = <&pinctrl_usdhc1_200mhz>;
++	vqmmc-supply = <&sw4_reg>;
++	bus-width = <8>;
++	non-removable;
++	no-sd;
++	no-sdio;
++	status = "okay";
++};
++
++&usdhc2 {
++	assigned-clocks = <&clk IMX8MQ_CLK_USDHC2>;
++	assigned-clock-rates = <200000000>;
++	pinctrl-names = "default", "state_100mhz", "state_200mhz";
++	pinctrl-0 = <&pinctrl_usdhc2>, <&pinctrl_usdhc2_gpio>;
++	pinctrl-1 = <&pinctrl_usdhc2_100mhz>, <&pinctrl_usdhc2_gpio>;
++	pinctrl-2 = <&pinctrl_usdhc2_200mhz>, <&pinctrl_usdhc2_gpio>;
++	cd-gpios = <&gpio2 12 GPIO_ACTIVE_LOW>;
++	vmmc-supply = <&reg_usdhc2_vmmc>;
++    no-1-8-v;
++	status = "okay";
++};
++
++&wdog1 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pinctrl_wdog>;
++	fsl,ext-reset-output;
++	status = "okay";
++};
++
++&{/busfreq} {
++	status = "disabled";
++};
++
++&iomuxc {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pinctrl_ext_gpio>;
++
++	pinctrl_ext_gpio: ext_gpio {
++		fsl,pins = <				
++			MX8MQ_IOMUXC_SAI3_RXC_GPIO4_IO29		0x19 	/* minipcie reset */				
++			MX8MQ_IOMUXC_GPIO1_IO03_GPIO1_IO3		0x19 	/* minipcie power */
++
++			MX8MQ_IOMUXC_SAI1_RXFS_GPIO4_IO0		0x19 	/* GPIO_1 */
++			MX8MQ_IOMUXC_SAI1_RXC_GPIO4_IO1			0x19 	/* GPIO_2 */
++			MX8MQ_IOMUXC_SAI2_RXFS_GPIO4_IO21		0x19 	/* GPIO_3 */
++			MX8MQ_IOMUXC_SAI2_RXC_GPIO4_IO22		0x19 	/* GPIO_4 */
++			MX8MQ_IOMUXC_SAI2_RXD0_GPIO4_IO23		0x19 	/* GPIO_5 */
++			MX8MQ_IOMUXC_SAI2_TXFS_GPIO4_IO24		0x19 	/* GPIO_6 */
++			MX8MQ_IOMUXC_SAI2_TXC_GPIO4_IO25		0x19 	/* GPIO_7 */
++			MX8MQ_IOMUXC_SAI2_TXD0_GPIO4_IO26		0x19 	/* GPIO_8 */
++
++
++			MX8MQ_IOMUXC_SAI3_RXD_GPIO4_IO30		0x19 	/* TPM IRQ */
++
++			MX8MQ_IOMUXC_SAI3_MCLK_GPIO5_IO2		0x19 	/* M.2 POWER_OFF */
++		>;
++	};
++
++	pinctrl_buck2: vddarmgrp {
++		fsl,pins = <
++			MX8MQ_IOMUXC_GPIO1_IO13_GPIO1_IO13		0x19
++		>;
++	};
++
++	ht1382_rtc_pins: pinmux_ht1382_pins {
++		fsl,pins = <
++			MX8MQ_IOMUXC_GPIO1_IO05_GPIO1_IO5		0x2f 	/* RTC_DIO */
++			MX8MQ_IOMUXC_GPIO1_IO04_GPIO1_IO4		0x2f 	/* RTC_SCLK */
++			MX8MQ_IOMUXC_GPIO1_IO06_GPIO1_IO6		0x19 	/* RTC_INT */
++/*			MX8MQ_IOMUXC_SAI2_MCLK_GPIO4_IO27		0x2f*/
++		>;
++	};
++
++	user_leds: user_leds_pins {
++		fsl,pins = <
++			MX8MQ_IOMUXC_SPDIF_TX_GPIO5_IO3			0x19	/* GPIO_LED1 */
++			MX8MQ_IOMUXC_SPDIF_RX_GPIO5_IO4			0x19
++			MX8MQ_IOMUXC_SPDIF_EXT_CLK_GPIO5_IO5	0x19
++		>;
++	};
++
++	pinctrl_fec1: fec1grp {
++		fsl,pins = <
++			MX8MQ_IOMUXC_ENET_MDC_ENET1_MDC			0x3
++			MX8MQ_IOMUXC_ENET_MDIO_ENET1_MDIO		0x23
++			MX8MQ_IOMUXC_ENET_TD3_ENET1_RGMII_TD3		0x1f
++			MX8MQ_IOMUXC_ENET_TD2_ENET1_RGMII_TD2		0x1f
++			MX8MQ_IOMUXC_ENET_TD1_ENET1_RGMII_TD1		0x1f
++			MX8MQ_IOMUXC_ENET_TD0_ENET1_RGMII_TD0		0x1f
++			MX8MQ_IOMUXC_ENET_RD3_ENET1_RGMII_RD3		0x91
++			MX8MQ_IOMUXC_ENET_RD2_ENET1_RGMII_RD2		0x91
++			MX8MQ_IOMUXC_ENET_RD1_ENET1_RGMII_RD1		0x91
++			MX8MQ_IOMUXC_ENET_RD0_ENET1_RGMII_RD0		0x91
++			MX8MQ_IOMUXC_ENET_TXC_ENET1_RGMII_TXC		0x1f
++			MX8MQ_IOMUXC_ENET_RXC_ENET1_RGMII_RXC		0x91
++			MX8MQ_IOMUXC_ENET_RX_CTL_ENET1_RGMII_RX_CTL	0x91
++			MX8MQ_IOMUXC_ENET_TX_CTL_ENET1_RGMII_TX_CTL	0x1f
++			MX8MQ_IOMUXC_GPIO1_IO09_GPIO1_IO9		0x19
++		>;
++	};
++
++	pinctrl_i2c1: i2c1grp {
++		fsl,pins = <
++			MX8MQ_IOMUXC_I2C1_SCL_I2C1_SCL			0x4000007f
++			MX8MQ_IOMUXC_I2C1_SDA_I2C1_SDA			0x4000007f
++		>;
++	};
++
++	pinctrl_i2c2: i2c2grp {
++		fsl,pins = <
++			MX8MQ_IOMUXC_I2C2_SCL_I2C2_SCL			0x4000007f
++			MX8MQ_IOMUXC_I2C2_SDA_I2C2_SDA			0x4000007f
++		>;
++	};
++
++	pinctrl_i2c3: i2c3grp {
++		fsl,pins = <
++			MX8MQ_IOMUXC_I2C3_SCL_I2C3_SCL			0x4000007f
++			MX8MQ_IOMUXC_I2C3_SDA_I2C3_SDA			0x4000007f
++		>;
++	};
++
++	pinctrl_pcie0: pcie0grp {
++		fsl,pins = <
++			MX8MQ_IOMUXC_I2C4_SCL_PCIE1_CLKREQ_B	0x76 /* open drain, pull up */
++			MX8MQ_IOMUXC_GPIO1_IO10_GPIO1_IO10	0x16 /* PCIE_LAN1_DISABLE# */
++			MX8MQ_IOMUXC_GPIO1_IO12_GPIO1_IO12	0x16 /* PCIE_LAN1_RST# */
++	/*		MX8MQ_IOMUXC_SAI3_RXC_GPIO4_IO29		0x19 	/* minipcie reset */
++		>;
++	};
++
++	pinctrl_pcie1: pcie1grp {
++		fsl,pins = <
++			MX8MQ_IOMUXC_I2C4_SDA_PCIE2_CLKREQ_B	0x76 /* open drain, pull up */
++			MX8MQ_IOMUXC_SAI5_RXD2_GPIO3_IO23	0x16 /* PCIE_M.2_RST# */
++			MX8MQ_IOMUXC_SAI5_RXC_GPIO3_IO20	0x16 /* PCIE_M.2_DISABLE# */
++		>;
++	};
++
++	pinctrl_reg_usdhc2: regusdhc2gpiogrp {
++		fsl,pins = <
++			MX8MQ_IOMUXC_SD2_RESET_B_GPIO2_IO19		0x41
++		>;
++	};
++
++	pinctrl_uart1: uart1grp {
++		fsl,pins = <
++			MX8MQ_IOMUXC_UART1_RXD_UART1_DCE_RX		0x49
++			MX8MQ_IOMUXC_UART1_TXD_UART1_DCE_TX		0x49
++		>;
++	};
++
++	pinctrl_uart2: uart2grp {
++		fsl,pins = <
++			MX8MQ_IOMUXC_UART2_RXD_UART2_DCE_RX		0x49
++			MX8MQ_IOMUXC_UART2_TXD_UART2_DCE_TX		0x49
++		>;
++	};
++
++	pinctrl_uart3: uart3grp {
++		fsl,pins = <
++			MX8MQ_IOMUXC_UART3_TXD_UART3_DCE_TX		0x49
++			MX8MQ_IOMUXC_UART3_RXD_UART3_DCE_RX		0x49
++			MX8MQ_IOMUXC_GPIO1_IO00_GPIO1_IO0		0x19
++		>;
++	};
++
++	pinctrl_uart4: uart4grp {
++		fsl,pins = <
++			MX8MQ_IOMUXC_UART4_TXD_UART4_DCE_TX		0x49
++			MX8MQ_IOMUXC_UART4_RXD_UART4_DCE_RX		0x49
++			MX8MQ_IOMUXC_GPIO1_IO01_GPIO1_IO1		0x19
++		>;
++	};
++
++    pinctrl_ecspi1: ecspi1grp {
++        fsl,pins = <
++            MX8MQ_IOMUXC_ECSPI1_SCLK_ECSPI1_SCLK    0x82
++            MX8MQ_IOMUXC_ECSPI1_MOSI_ECSPI1_MOSI    0x82
++            MX8MQ_IOMUXC_ECSPI1_MISO_ECSPI1_MISO    0x82
++        >;
++    };
++
++    pinctrl_ecspi1_cs: ecspi1cs {
++        fsl,pins = <
++            MX8MQ_IOMUXC_ECSPI1_SS0_GPIO5_IO9       0x82
++        >;
++    };
++
++    pinctrl_ecspi2: ecspi2grp {
++        fsl,pins = <
++            MX8MQ_IOMUXC_ECSPI2_SCLK_ECSPI2_SCLK    0x82
++            MX8MQ_IOMUXC_ECSPI2_MOSI_ECSPI2_MOSI    0x82
++            MX8MQ_IOMUXC_ECSPI2_MISO_ECSPI2_MISO    0x82
++        >;
++    };
++
++    pinctrl_ecspi2_cs: ecspi2cs {
++        fsl,pins = <
++            MX8MQ_IOMUXC_ECSPI2_SS0_GPIO5_IO13      0x82
++        >;
++    };
++
++	pinctrl_usdhc1: usdhc1grp {
++		fsl,pins = <
++			MX8MQ_IOMUXC_SD1_CLK_USDHC1_CLK			0x83
++			MX8MQ_IOMUXC_SD1_CMD_USDHC1_CMD			0xc3
++			MX8MQ_IOMUXC_SD1_DATA0_USDHC1_DATA0		0xc3
++			MX8MQ_IOMUXC_SD1_DATA1_USDHC1_DATA1		0xc3
++			MX8MQ_IOMUXC_SD1_DATA2_USDHC1_DATA2		0xc3
++			MX8MQ_IOMUXC_SD1_DATA3_USDHC1_DATA3		0xc3
++			MX8MQ_IOMUXC_SD1_DATA4_USDHC1_DATA4		0xc3
++			MX8MQ_IOMUXC_SD1_DATA5_USDHC1_DATA5		0xc3
++			MX8MQ_IOMUXC_SD1_DATA6_USDHC1_DATA6		0xc3
++			MX8MQ_IOMUXC_SD1_DATA7_USDHC1_DATA7		0xc3
++			MX8MQ_IOMUXC_SD1_STROBE_USDHC1_STROBE		0x83
++			MX8MQ_IOMUXC_SD1_RESET_B_USDHC1_RESET_B		0xc1
++		>;
++	};
++
++	pinctrl_usdhc1_100mhz: usdhc1-100grp {
++		fsl,pins = <
++			MX8MQ_IOMUXC_SD1_CLK_USDHC1_CLK			0x8d
++			MX8MQ_IOMUXC_SD1_CMD_USDHC1_CMD			0xcd
++			MX8MQ_IOMUXC_SD1_DATA0_USDHC1_DATA0		0xcd
++			MX8MQ_IOMUXC_SD1_DATA1_USDHC1_DATA1		0xcd
++			MX8MQ_IOMUXC_SD1_DATA2_USDHC1_DATA2		0xcd
++			MX8MQ_IOMUXC_SD1_DATA3_USDHC1_DATA3		0xcd
++			MX8MQ_IOMUXC_SD1_DATA4_USDHC1_DATA4		0xcd
++			MX8MQ_IOMUXC_SD1_DATA5_USDHC1_DATA5		0xcd
++			MX8MQ_IOMUXC_SD1_DATA6_USDHC1_DATA6		0xcd
++			MX8MQ_IOMUXC_SD1_DATA7_USDHC1_DATA7		0xcd
++			MX8MQ_IOMUXC_SD1_STROBE_USDHC1_STROBE		0x8d
++			MX8MQ_IOMUXC_SD1_RESET_B_USDHC1_RESET_B		0xc1
++		>;
++	};
++
++	pinctrl_usdhc1_200mhz: usdhc1-200grp {
++		fsl,pins = <
++			MX8MQ_IOMUXC_SD1_CLK_USDHC1_CLK			0x9f
++			MX8MQ_IOMUXC_SD1_CMD_USDHC1_CMD			0xdf
++			MX8MQ_IOMUXC_SD1_DATA0_USDHC1_DATA0		0xdf
++			MX8MQ_IOMUXC_SD1_DATA1_USDHC1_DATA1		0xdf
++			MX8MQ_IOMUXC_SD1_DATA2_USDHC1_DATA2		0xdf
++			MX8MQ_IOMUXC_SD1_DATA3_USDHC1_DATA3		0xdf
++			MX8MQ_IOMUXC_SD1_DATA4_USDHC1_DATA4		0xdf
++			MX8MQ_IOMUXC_SD1_DATA5_USDHC1_DATA5		0xdf
++			MX8MQ_IOMUXC_SD1_DATA6_USDHC1_DATA6		0xdf
++			MX8MQ_IOMUXC_SD1_DATA7_USDHC1_DATA7		0xdf
++			MX8MQ_IOMUXC_SD1_STROBE_USDHC1_STROBE		0x9f
++			MX8MQ_IOMUXC_SD1_RESET_B_USDHC1_RESET_B		0xc1
++		>;
++	};
++
++	pinctrl_usdhc2_gpio: usdhc2gpiogrp {
++		fsl,pins = <
++			MX8MQ_IOMUXC_SD2_CD_B_GPIO2_IO12		0x41
++		>;
++	};
++
++	pinctrl_usdhc2: usdhc2grp {
++		fsl,pins = <
++			MX8MQ_IOMUXC_SD2_CLK_USDHC2_CLK			0x8f
++			MX8MQ_IOMUXC_SD2_CMD_USDHC2_CMD			0xc3
++			MX8MQ_IOMUXC_SD2_DATA0_USDHC2_DATA0		0xc3
++			MX8MQ_IOMUXC_SD2_DATA1_USDHC2_DATA1		0xc3
++			MX8MQ_IOMUXC_SD2_DATA2_USDHC2_DATA2		0xc3
++			MX8MQ_IOMUXC_SD2_DATA3_USDHC2_DATA3		0xc3
++		>;
++	};
++
++	pinctrl_usdhc2_100mhz: usdhc2-100grp {
++		fsl,pins = <
++			MX8MQ_IOMUXC_SD2_CLK_USDHC2_CLK			0x8f
++			MX8MQ_IOMUXC_SD2_CMD_USDHC2_CMD			0xc5
++			MX8MQ_IOMUXC_SD2_DATA0_USDHC2_DATA0		0xc5
++			MX8MQ_IOMUXC_SD2_DATA1_USDHC2_DATA1		0xc5
++			MX8MQ_IOMUXC_SD2_DATA2_USDHC2_DATA2		0xc5
++			MX8MQ_IOMUXC_SD2_DATA3_USDHC2_DATA3		0xc5
++		>;
++	};
++
++	pinctrl_usdhc2_200mhz: usdhc2-200grp {
++		fsl,pins = <
++			MX8MQ_IOMUXC_SD2_CLK_USDHC2_CLK			0x8f
++			MX8MQ_IOMUXC_SD2_CMD_USDHC2_CMD			0xc7
++			MX8MQ_IOMUXC_SD2_DATA0_USDHC2_DATA0		0xc7
++			MX8MQ_IOMUXC_SD2_DATA1_USDHC2_DATA1		0xc7
++			MX8MQ_IOMUXC_SD2_DATA2_USDHC2_DATA2		0xc7
++			MX8MQ_IOMUXC_SD2_DATA3_USDHC2_DATA3		0xc7
++		>;
++	};
++
++	pinctrl_wdog: wdog1grp {
++		fsl,pins = <
++			MX8MQ_IOMUXC_GPIO1_IO02_WDOG1_WDOG_B		0xc6
++		>;
++	};
++};
++
++&vpu {
++	status = "okay";
++};
++
++&vpu_v4l2 {
++	status = "okay";
++};
++
++&gpu3d {
++	status = "okay";
++};
++
++&irqsteer {
++	status = "okay";
++};
++
++&dcss {
++	status = "okay";
++
++	port@0 {
++		dcss_out: endpoint {
++			  remote-endpoint = <&hdmi_in>;
++		};
++	};
++};
++
++&hdmi {
++	compatible = "cdn,imx8mq-hdmi";
++	lane-mapping = <0xe4>;
++	hdcp-config = <0x3>;
++	status = "okay";
++	port@1 {
++		hdmi_in: endpoint {
++			remote-endpoint = <&dcss_out>;
++		};
++	};
++};
+diff --git a/drivers/char/Kconfig b/drivers/char/Kconfig
+index 86cb16e65d88..d18b89b1b4ae 100644
+--- a/drivers/char/Kconfig
++++ b/drivers/char/Kconfig
+@@ -132,6 +132,12 @@ config POWERNV_OP_PANEL
+ 
+ 	  If unsure, say M here to build it as a module called powernv-op-panel.
+ 
++config ECU_BOARD
++	tristate "advantech imx8 ecu board driver"
++	default n
++	help
++	  this driver added by yuyan.tsai
++
+ source "drivers/char/ipmi/Kconfig"
+ 
+ config DS1620
+diff --git a/drivers/char/Makefile b/drivers/char/Makefile
+index b84b1a6db304..4afb07357721 100644
+--- a/drivers/char/Makefile
++++ b/drivers/char/Makefile
+@@ -45,3 +45,4 @@ obj-$(CONFIG_XILLYBUS_CLASS)	+= xillybus/
+ obj-$(CONFIG_POWERNV_OP_PANEL)	+= powernv-op-panel.o
+ obj-$(CONFIG_ADI)		+= adi.o
+ obj-$(CONFIG_HAVE_IMX_AMP)      += imx_amp/
++obj-$(CONFIG_ECU_BOARD)		+= ecu_board.o
+diff --git a/drivers/char/ecu_board.c b/drivers/char/ecu_board.c
+new file mode 100644
+index 000000000000..aa247553d32b
+--- /dev/null
++++ b/drivers/char/ecu_board.c
+@@ -0,0 +1,134 @@
++#include <linux/init.h>
++#include <linux/module.h>
++#include <linux/of.h>
++#include <linux/platform_device.h>
++#include <linux/kernel.h>
++#include <linux/proc_fs.h>
++#include <linux/uaccess.h>
++#include <linux/fs.h>
++#include <linux/proc_fs.h>
++#include <linux/seq_file.h>
++#include <linux/gpio.h>
++#include <linux/delay.h>
++
++static char board_name[32] = { 0 };
++
++static int board_proc_show(struct seq_file *m, void *v)
++{
++	seq_printf(m, "%s", board_name);
++	return 0;
++}
++
++static int board_proc_open(struct inode *inode, struct file *file)
++{
++	return single_open(file, board_proc_show, NULL);
++}
++
++static const struct proc_ops board_proc_fops = {
++	.proc_open		= board_proc_open,
++	.proc_read		= seq_read,
++	.proc_lseek		= seq_lseek,
++	.proc_release	= single_release,
++};
++
++static int __init proc_board_init(void)
++{
++	proc_create("board", 0, NULL, &board_proc_fops);
++	return 0;
++}
++
++#define GPIO_TO_PIN(bank, gpio) 				(32 * (bank - 1) + (gpio))
++#define MINI_PCIE_POWER_RESET_DELAY            	500 // 500 ms
++#define MINI_PCIE_RESET_DELAY                  	100 // 100ms
++
++static int gpio_reset_one(int base, int num, int time)
++{
++	int gpio = GPIO_TO_PIN(base, num);
++	if (gpio_request_one(gpio, GPIOF_OUT_INIT_HIGH, "gpio_out") < 0) {
++		pr_err("Failed to request GPIO%d for GPIO%d_%d\n", gpio, base,num);
++		return -1;
++	}
++
++	gpio_set_value(gpio, 0);
++	mdelay(time);
++
++	gpio_set_value(gpio, 1);
++
++	//gpio_free(gpio);
++	return 0;
++}
++
++static void minipcie_reset(void)
++{
++//#if defined(CONFIG_MACH_ECU150) || defined(CONFIG_MACH_ECU150A1) || defined(CONFIG_MACH_ECU150F)
++	/* Minipcie Power Reset */
++	// gpio_reset_one(1, 3, MINI_PCIE_POWER_RESET_DELAY); // MINIPCIE1
++	// /* Minipcie Module Reset */
++	// gpio_reset_one(4, 29, MINI_PCIE_POWER_RESET_DELAY); // MINIPCIE1
++	// gpio_reset_one(3, 24, MINI_PCIE_POWER_RESET_DELAY); // MINIPCIE2
++//#endif
++}
++
++static int ecu_board_probe(struct platform_device *pdev)
++{
++	const char *my_string;
++	struct device *dev = &pdev->dev;
++	struct device_node *np = dev->of_node;
++
++	if (!np) {
++		dev_err(dev, "No device tree node found\n");
++		return -ENODEV;
++	}
++
++	if (of_property_read_string(np, "board_name", &my_string)) {
++		dev_err(dev, "Failed to read my_string from device tree\n");
++		return -EINVAL;
++	}
++
++	snprintf(board_name, sizeof(board_name), "%s\n", my_string); 
++	printk("+++ecu board %s init.\n", board_name);
++	proc_board_init();
++	minipcie_reset();
++
++	dev_info(dev, "my_string from device tree: %s\n", my_string);
++	return 0;
++}
++
++static const struct of_device_id ecu_board_of_match[] = {
++	{ .compatible = "custom,ecu-board", },
++	{},
++};
++MODULE_DEVICE_TABLE(of, ecu_board_of_match);
++
++static struct platform_driver ecu_board_driver = {
++	.probe = ecu_board_probe,
++//   .remove = ecu_board_remove,
++	.driver = {
++		.name = "ecu_board",
++		.of_match_table = ecu_board_of_match,
++	},
++};
++
++static int __init ecu_board_init(void)
++{
++	int ret = platform_driver_register(&ecu_board_driver);
++	if (!ret) {
++		printk(KERN_ERR "ecu_board: %s\n", "Registerered");
++	} else {
++		printk(KERN_ERR "ecu_board: %s\n", "Failed");
++	}
++	return ret;
++}
++
++static void __exit ecu_board_deinit(void)
++{
++	platform_driver_unregister(&ecu_board_driver);
++}
++
++module_init(ecu_board_init);
++module_exit(ecu_board_deinit);
++
++MODULE_AUTHOR("Yuyan.Tsai");
++MODULE_DESCRIPTION("i.MX8M ecu board driver");
++MODULE_LICENSE("GPL v2");
++
+diff --git a/drivers/rtc/Kconfig b/drivers/rtc/Kconfig
+index b0adfeff2b35..095913e948df 100644
+--- a/drivers/rtc/Kconfig
++++ b/drivers/rtc/Kconfig
+@@ -2015,4 +2015,13 @@ config RTC_DRV_POLARFIRE_SOC
+ 	  This driver can also be built as a module, if so, the module
+ 	  will be called "rtc-mpfs".
+ 
++config RTC_DRV_HT1382
++        tristate "HT1382 RTC"
++        help
++          If you say Y here you will get support for the
++          HOLTEK HT1282 RTC chips.
++
++          This driver can also be built as a module. If so, the module
++          will be called rtc-ht1382.
++
+ endif # RTC_CLASS
+diff --git a/drivers/rtc/Makefile b/drivers/rtc/Makefile
+index 95b05c00ed67..85c62297ed6e 100644
+--- a/drivers/rtc/Makefile
++++ b/drivers/rtc/Makefile
+@@ -186,3 +186,4 @@ obj-$(CONFIG_RTC_DRV_WM8350)	+= rtc-wm8350.o
+ obj-$(CONFIG_RTC_DRV_X1205)	+= rtc-x1205.o
+ obj-$(CONFIG_RTC_DRV_XGENE)	+= rtc-xgene.o
+ obj-$(CONFIG_RTC_DRV_ZYNQMP)	+= rtc-zynqmp.o
++obj-$(CONFIG_RTC_DRV_HT1382)    += rtc-ht1382.o
+diff --git a/drivers/rtc/rtc-ht1382.c b/drivers/rtc/rtc-ht1382.c
+new file mode 100644
+index 000000000000..7579405f7352
+--- /dev/null
++++ b/drivers/rtc/rtc-ht1382.c
+@@ -0,0 +1,206 @@
++#include <linux/module.h>
++#include <linux/i2c.h>
++#include <linux/rtc.h>
++#include <linux/init.h>
++#include <linux/errno.h>
++#include <linux/bcd.h>
++
++#define HT1382_SECONDS		0x00	/* Seconds register address */
++#define HT1382_STOP		0x80	/* Oscillator Stop flag */
++#define HT1382_HOUR_1224	0x80	/* 12/24 flag */
++#define HT1382_HOUR_AMPM	0x20	/* AM/PM flag */
++
++#define HT1382_ST1		0x07	/* Status register address */
++#define HT1382_WP		0x80	/* Write Protect flag */
++
++struct ht1382_regs {
++	uint8_t		second;
++	uint8_t		minute;
++	uint8_t		hour;
++	uint8_t		date;
++	uint8_t		month;
++	uint8_t		day;
++	uint8_t		year;
++};
++
++static struct i2c_driver ht1382_driver;
++
++static int ht1382_read(struct device *dev, void *data, uint8_t off, uint8_t len)
++{
++	struct i2c_client *client = to_i2c_client(dev);
++	struct i2c_msg msgs[] = {
++		{
++			.addr = client->addr,
++			.flags = 0,
++			.len = 1,
++			.buf = &off,
++		}, {
++			.addr = client->addr,
++			.flags = I2C_M_RD,
++			.len = len,
++			.buf = data,
++		}
++	};
++
++	if (i2c_transfer(client->adapter, msgs, 2) == 2)
++		return 0;
++
++	return -EIO;
++}
++
++static int ht1382_write(struct device *dev, void *data, uint8_t off, uint8_t len)
++{
++	struct i2c_client *client = to_i2c_client(dev);
++	static uint8_t buffer[64 * 1024];//max length for i2c_master_send
++
++	if((len + 1) >= (64 * 1024)){
++		return -EIO;
++	}
++
++	buffer[0] = off;
++	memcpy(&buffer[1], data, len);
++
++	if (i2c_master_send(client, buffer, len + 1) == (len + 1)){
++		return 0;
++	}
++
++	return -EIO;
++}
++
++static int ht1382_rtc_read_time(struct device *dev, struct rtc_time *tm)
++{
++	struct ht1382_regs regs;
++	int error;
++
++	error = ht1382_read(dev, &regs, 0, sizeof(regs));
++	if (error)
++		return error;
++
++	dev_dbg(dev,
++		"%s: raw data is sec=%02x, min=%02x, hour=%02x, "
++		"date=%02x, day=%02x, mon=%02x, "
++		"year=%02x\n",
++		__func__,
++		regs.second,regs.minute,regs.hour,
++		regs.date,regs.day,regs.month,regs.year);
++
++	tm->tm_sec = bcd2bin(regs.second & 0x7f);
++	tm->tm_min = bcd2bin(regs.minute & 0x7f);
++        if (regs.hour & HT1382_HOUR_1224) {
++                tm->tm_hour = bcd2bin(regs.hour & 0x1f);
++                if (regs.hour & HT1382_HOUR_AMPM) tm->tm_hour += 12;
++        } else {
++                tm->tm_hour = bcd2bin(regs.hour & 0x3f);
++	}
++	tm->tm_mday = bcd2bin(regs.date);
++	tm->tm_wday = bcd2bin(regs.day) - 1;
++	tm->tm_mon = bcd2bin(regs.month) - 1;
++	tm->tm_year = bcd2bin(regs.year) + 100;
++	if (rtc_valid_tm(tm)) {
++		dev_err(dev, "retrieved date/time is not valid.\n");		
++		return -EINVAL;
++	}
++	return 0;
++}
++
++static int ht1382_rtc_set_time(struct device *dev, struct rtc_time *tm)
++{
++	struct ht1382_regs regs;
++	uint8_t reg;
++	int error;
++
++	/* WP off */
++	reg = 0;
++	error = ht1382_write(dev, &reg, HT1382_ST1, 1);
++	if (error)
++		return error;
++
++	regs.second = bin2bcd(tm->tm_sec);
++	regs.minute = bin2bcd(tm->tm_min);
++	regs.hour = bin2bcd(tm->tm_hour) | HT1382_HOUR_1224;
++	regs.day = bin2bcd(tm->tm_wday + 1);
++	regs.date = bin2bcd(tm->tm_mday);
++	regs.month = bin2bcd(tm->tm_mon + 1);
++	regs.year = bin2bcd(tm->tm_year % 100);
++
++	error = ht1382_write(dev, &regs, 0, sizeof(regs));
++	if (error)
++		return error;
++
++	/* WP on */
++	reg = 0x80;
++	return ht1382_write(dev, &reg, HT1382_ST1, 1);
++}
++
++static const struct rtc_class_ops ht1382_rtc_ops = {
++	.read_time	= ht1382_rtc_read_time,
++	.set_time	= ht1382_rtc_set_time,
++};
++
++static int ht1382_probe(struct i2c_client *client)
++{
++	struct device *dev = &client->dev;
++	struct rtc_device *rtc;
++	uint8_t reg;
++	int error;
++
++	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C))
++		return -ENODEV;
++
++	/* WP off */
++	reg = 0;
++	error = ht1382_write(dev, &reg, HT1382_ST1, 1);
++	if(error){
++		dev_err(dev, "WP off failed");
++	}
++	
++	error = ht1382_read(dev, &reg, HT1382_SECONDS, 1);
++	if (!error && (reg & HT1382_STOP)) {
++		dev_warn(dev, "Oscillator was halted. Restarting...\n");
++		reg &= ~HT1382_STOP;
++		error = ht1382_write(dev, &reg, HT1382_SECONDS, 1);
++	}
++	
++	/* WP on */
++	reg = 0x80;
++	error = ht1382_write(dev, &reg, HT1382_ST1, 1);
++	
++	if (error)
++		return error;
++
++	rtc = devm_rtc_device_register(&client->dev, ht1382_driver.driver.name,
++						&ht1382_rtc_ops, THIS_MODULE);
++	if (IS_ERR(rtc))
++		return PTR_ERR(rtc);
++
++	i2c_set_clientdata(client, rtc);
++
++	return 0;
++}
++
++static const struct i2c_device_id ht1382_id[] = {
++	{ "ht1382", 0 },
++	{ }
++};
++MODULE_DEVICE_TABLE(i2c, ht1382_id);
++
++static const struct of_device_id ht1382_of_match[] = {
++        { .compatible = "htk,ht1382" },
++        {}
++};
++MODULE_DEVICE_TABLE(of, ht1382_of_match);
++
++static struct i2c_driver ht1382_driver = {
++	.driver = {
++		.name	= "ht1382",
++		.owner	= THIS_MODULE,
++		.of_match_table = ht1382_of_match,  
++	},
++	.probe		= ht1382_probe,
++	.id_table	= ht1382_id,
++};
++
++module_i2c_driver(ht1382_driver);
++
++MODULE_DESCRIPTION("Holtek 1382 I2C RTC driver");
++MODULE_LICENSE("GPL");

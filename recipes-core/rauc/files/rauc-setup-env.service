@@ -1,0 +1,13 @@
+[Unit]
+Description=RAUC Environment Setup (Dynamic Configuration)
+After=local-fs.target
+Before=rauc.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/rauc-setup-env.sh
+RemainAfterExit=yes
+StandardOutput=journal+console
+
+[Install]
+WantedBy=multi-user.target

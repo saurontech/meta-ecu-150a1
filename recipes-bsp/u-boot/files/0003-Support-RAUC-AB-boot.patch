@@ -1,0 +1,212 @@
+From b8ba4334dbb8616c90d8e06cb2cf1453f440385e Mon Sep 17 00:00:00 2001
+From: "suricata.lu" <suricata.lu@gmail.com>
+Date: Wed, 28 Jan 2026 23:49:27 +0800
+Subject: [PATCH] Support RAUC AB boot
+
+---
+ board/freescale/imx8mq_evk/imx8mq_evk.c | 138 ++++++++++++++++++++++++
+ configs/imx8mq_evk_defconfig            |   4 +-
+ include/configs/imx8mq_evk.h            |  15 +++
+ 3 files changed, 155 insertions(+), 2 deletions(-)
+
+diff --git a/board/freescale/imx8mq_evk/imx8mq_evk.c b/board/freescale/imx8mq_evk/imx8mq_evk.c
+index 85380ce5ab4..e3f80d11ece 100644
+--- a/board/freescale/imx8mq_evk/imx8mq_evk.c
++++ b/board/freescale/imx8mq_evk/imx8mq_evk.c
+@@ -428,3 +428,141 @@ U_BOOT_CMD(
+     "Boot from eMMC or SD Card based on mmcdev environment variable"
+ );
+ #endif /* CONFIG_STANDARD_BOOT */
++
++#ifdef CONFIG_RAUC_AB_BOOT
++/*
++ * RAUC A/B Boot Logic for ECU-150A1 (based on imx8mq_evk)
++ * 
++ * This implements the same logic as boot.cmd but in C code,
++ * ensuring it's covered by HAB signature verification.
++ * 
++ * Note: This code is added to imx8mq_evk.c because ECU-150A1
++ * does not have a separate board directory.
++ */
++
++static int rauc_try_boot_slot(int mmc_dev, int partition, const char *slot_name)
++{
++    char cmd[256];
++    char root_dev[32];
++    char bootargs[512];
++    ulong loadaddr = env_get_hex("loadaddr", 0x40480000);
++    ulong fdt_addr = env_get_hex("fdt_addr", 0x43000000);
++    
++    /* Determine Linux device name */
++    snprintf(root_dev, sizeof(root_dev), "mmcblk%d", mmc_dev);
++    
++    printf(">>> Trying Slot %s (partition %d)...\n", slot_name, partition);
++    
++    /* Load kernel Image from /boot directory in rootfs */
++    snprintf(cmd, sizeof(cmd), "load mmc %d:%d 0x%lx /boot/Image",
++             mmc_dev, partition, loadaddr);
++    if (run_command(cmd, 0) != 0) {
++        printf(">>> Failed to load kernel Image\n");
++        return -1;
++    }
++    
++    /* Load DTB from /boot directory */
++    snprintf(cmd, sizeof(cmd), "load mmc %d:%d 0x%lx /boot/%s",
++             mmc_dev, partition, fdt_addr, CONFIG_DTB_FILE);
++    if (run_command(cmd, 0) != 0) {
++        printf(">>> Failed to load DTB\n");
++        return -1;
++    }
++    
++    /* Set bootargs */
++    snprintf(bootargs, sizeof(bootargs),
++             "console=ttymxc0,115200 rauc.slot=%s root=/dev/%sp%d rootwait rw",
++             slot_name, root_dev, partition);
++    env_set("bootargs", bootargs);
++    
++    printf(">>> Booting %s from /dev/%sp%d...\n", slot_name, root_dev, partition);
++    
++    /* Boot the kernel */
++    snprintf(cmd, sizeof(cmd), "booti 0x%lx - 0x%lx", loadaddr, fdt_addr);
++    run_command(cmd, 0);
++    
++    /* If we reach here, boot failed */
++    return -1;
++}
++
++static int do_rauc_boot(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
++{
++    const char *boot_order;
++    char *order_copy, *slot;
++    int mmc_dev;
++    char left_var[32];
++    int left_count;
++    
++    printf("=== ECU-150A1 RAUC A/B Boot (Secure Boot Compatible) ===\n");
++    
++    /* Get MMC device from environment (set by board_late_init) */
++    mmc_dev = env_get_ulong("mmcdev", 10, 1);  /* Default to SD card */
++    printf(">>> Boot device: mmc %d (%s)\n", mmc_dev, 
++           mmc_dev == 0 ? "eMMC" : "SD Card");
++    
++    /* Get boot order */
++    boot_order = env_get("BOOT_ORDER");
++    if (!boot_order)
++        boot_order = CONFIG_RAUC_DEFAULT_BOOT_ORDER;
++    
++    printf(">>> BOOT_ORDER: %s\n", boot_order);
++    
++    /* Parse and try each slot in order */
++    order_copy = strdup(boot_order);
++    slot = strtok(order_copy, " ");
++    
++    while (slot) {
++        int partition;
++        
++        /* Determine partition number (3-partition layout for Secure Boot) */
++        if (strcmp(slot, "system0") == 0) {
++            partition = 1;  /* rootfs_a = p1 */
++            snprintf(left_var, sizeof(left_var), "BOOT_system0_LEFT");
++        } else if (strcmp(slot, "system1") == 0) {
++            partition = 2;  /* rootfs_b = p2 */
++            snprintf(left_var, sizeof(left_var), "BOOT_system1_LEFT");
++        } else {
++            printf(">>> Unknown slot: %s, skipping\n", slot);
++            slot = strtok(NULL, " ");
++            continue;
++        }
++        
++        /* Check remaining attempts */
++        left_count = env_get_ulong(left_var, 10, CONFIG_RAUC_DEFAULT_BOOT_TRIES);
++        printf(">>> %s: %d attempts left\n", slot, left_count);
++        
++        if (left_count > 0) {
++            /* Decrement counter and save */
++            left_count--;
++            env_set_ulong(left_var, left_count);
++            env_save();  /* Critical: save before attempting boot */
++            
++            /* Try to boot this slot */
++            if (rauc_try_boot_slot(mmc_dev, partition, slot) == 0) {
++                /* Should not reach here on success */
++            }
++            printf(">>> %s: Boot failed\n", slot);
++        } else {
++            printf(">>> %s: No attempts left, skipping\n", slot);
++        }
++        
++        slot = strtok(NULL, " ");
++    }
++    
++    free(order_copy);
++    
++    printf("!!! FATAL: No bootable slot found!\n");
++    printf("!!! Resetting in 5 seconds...\n");
++    mdelay(5000);
++    run_command("reset", 0);
++    
++    return 0;  /* Never reached */
++}
++
++U_BOOT_CMD(
++    rauc_boot, 1, 0, do_rauc_boot,
++    "RAUC A/B boot command",
++    "Attempt to boot from A/B slots based on BOOT_ORDER and remaining attempts"
++);
++
++#endif /* CONFIG_RAUC_AB_BOOT */
+diff --git a/configs/imx8mq_evk_defconfig b/configs/imx8mq_evk_defconfig
+index e70c94d010a..202fe52ed72 100644
+--- a/configs/imx8mq_evk_defconfig
++++ b/configs/imx8mq_evk_defconfig
+@@ -9,7 +9,7 @@ CONFIG_SPL_SYS_MALLOC_F_LEN=0x2000
+ CONFIG_SYS_MEMTEST_START=0x40000000
+ CONFIG_SYS_MEMTEST_END=0xA0000000
+ CONFIG_ENV_SIZE=0x4000
+-CONFIG_ENV_OFFSET=0x700000
++CONFIG_ENV_OFFSET=0x400000
+ CONFIG_SYS_I2C_MXC_I2C1=y
+ CONFIG_SYS_I2C_MXC_I2C2=y
+ CONFIG_SYS_I2C_MXC_I2C3=y
+@@ -27,7 +27,7 @@ CONFIG_IMX_BOOTAUX=y
+ CONFIG_SYS_LOAD_ADDR=0x40400000
+ CONFIG_DEFAULT_DEVICE_TREE="fsl-imx8mq-ecu150a1"
+ CONFIG_REMAKE_ELF=y
+-CONFIG_BOOTCOMMAND="run sr_ir_v2_cmd;run standard_bootcmd"
++CONFIG_BOOTCOMMAND="run sr_ir_v2_cmd;run rauc_bootcmd"
+ CONFIG_SYS_MONITOR_LEN=524288
+ CONFIG_FIT=y
+ CONFIG_FIT_EXTERNAL_OFFSET=0x3000
+diff --git a/include/configs/imx8mq_evk.h b/include/configs/imx8mq_evk.h
+index 901a896fd7f..4da7a2f4d8a 100644
+--- a/include/configs/imx8mq_evk.h
++++ b/include/configs/imx8mq_evk.h
+@@ -84,6 +84,7 @@
+ 	SR_IR_V2_COMMAND \
+ 	JAILHOUSE_ENV \
+ 	CFG_EXTRA_ENV_STANDARD \
++	CFG_EXTRA_ENV_RAUC \
+ 	"prepare_mcore=setenv mcore_clk clk-imx8mq.mcore_booted;\0" \
+ 	"scriptaddr=0x43500000\0" \
+ 	"kernel_addr_r=" __stringify(CONFIG_SYS_LOAD_ADDR) "\0" \
+@@ -188,6 +189,20 @@
+     "standard_bootcmd=standard_boot\0"
+ 
+ 
++/* RAUC Realated */
++#define CONFIG_RAUC_AB_BOOT
++#define CONFIG_RAUC_DEFAULT_BOOT_ORDER    "system0 system1"
++#define CONFIG_RAUC_DEFAULT_BOOT_TRIES    3
++
++/* Default environment variables for A/B boot */
++#define CFG_EXTRA_ENV_RAUC \
++    "BOOT_ORDER=" CONFIG_RAUC_DEFAULT_BOOT_ORDER "\0" \
++    "BOOT_system0_LEFT=3\0" \
++    "BOOT_system1_LEFT=3\0" \
++    "rauc_slot=\0" \
++    "rauc_bootcmd=rauc_boot\0"
++
++	
+ /* Link Definitions */
+ 
+ #define CFG_SYS_INIT_RAM_ADDR        0x40000000

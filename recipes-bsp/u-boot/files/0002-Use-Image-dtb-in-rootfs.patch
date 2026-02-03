@@ -1,0 +1,188 @@
+From d95c0a1331fa79a81a66f0be37ef31c39ba61efe Mon Sep 17 00:00:00 2001
+From: "suricata.lu" <suricata.lu@gmail.com>
+Date: Wed, 28 Jan 2026 13:46:31 +0800
+Subject: [PATCH] change to use Image and dtb in rootfs
+
+---
+ board/freescale/imx8mq_evk/imx8mq_evk.c | 92 +++++++++++++++++++++++++
+ configs/imx8mq_evk_defconfig            |  2 +-
+ include/configs/imx8mq_evk.h            | 20 ++++--
+ 3 files changed, 109 insertions(+), 5 deletions(-)
+
+diff --git a/board/freescale/imx8mq_evk/imx8mq_evk.c b/board/freescale/imx8mq_evk/imx8mq_evk.c
+index d4c326249f4..85380ce5ab4 100644
+--- a/board/freescale/imx8mq_evk/imx8mq_evk.c
++++ b/board/freescale/imx8mq_evk/imx8mq_evk.c
+@@ -30,6 +30,8 @@
+ #include "../common/pfuze.h"
+ #include <usb.h>
+ #include <dwc3-uboot.h>
++#include <fs.h>
++#include <linux/delay.h>
+ 
+ DECLARE_GLOBAL_DATA_PTR;
+ 
+@@ -336,3 +338,93 @@ int is_recovery_key_pressing(void)
+ }
+ #endif /* CONFIG_ANDROID_RECOVERY */
+ #endif /* CONFIG_FSL_FASTBOOT */
++
++#ifdef CONFIG_STANDARD_BOOT
++/*
++ * Standard Boot Logic for ECU-150A1 (Non-RAUC)
++ * 
++ * This implements a simple boot logic without A/B slot management.
++ * Boot device is determined by mmcdev environment variable
++ * (same as RAUC version for consistency).
++ * 
++ * Note: This code is added to imx8mq_evk.c because ECU-150A1
++ * does not have a separate board directory.
++ */
++
++static int standard_try_boot_device(int mmc_dev, int partition, const char *device_name)
++{
++    char cmd[256];
++    char root_dev[32];
++    char bootargs[512];
++    ulong loadaddr = env_get_hex("loadaddr", 0x40480000);
++    ulong fdt_addr = env_get_hex("fdt_addr", 0x43000000);
++    
++    /* Determine Linux device name */
++    snprintf(root_dev, sizeof(root_dev), "mmcblk%d", mmc_dev);
++    
++    printf(">>> Trying boot from %s (mmc %d:%d)...\n", device_name, mmc_dev, partition);
++    
++    /* Load kernel Image from /boot directory in rootfs */
++    snprintf(cmd, sizeof(cmd), "load mmc %d:%d 0x%lx /boot/Image",
++             mmc_dev, partition, loadaddr);
++    if (run_command(cmd, 0) != 0) {
++        printf(">>> Failed to load kernel Image\n");
++        return -1;
++    }
++    
++    /* Load DTB from /boot directory */
++    snprintf(cmd, sizeof(cmd), "load mmc %d:%d 0x%lx /boot/%s",
++             mmc_dev, partition, fdt_addr, CONFIG_DTB_FILE);
++    if (run_command(cmd, 0) != 0) {
++        printf(">>> Failed to load DTB\n");
++        return -1;
++    }
++    
++    /* Set bootargs */
++    snprintf(bootargs, sizeof(bootargs),
++             "console=ttymxc0,115200 root=/dev/%sp%d rootwait rw",
++             root_dev, partition);
++    env_set("bootargs", bootargs);
++    
++    printf(">>> Booting from /dev/%sp%d...\n", root_dev, partition);
++    
++    /* Boot the kernel */
++    snprintf(cmd, sizeof(cmd), "booti 0x%lx - 0x%lx", loadaddr, fdt_addr);
++    run_command(cmd, 0);
++    
++    /* If we reach here, boot failed */
++    return -1;
++}
++
++static int do_standard_boot(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
++{
++    int mmc_dev;
++    
++    printf("=== ECU-150A1 Standard Boot (Non-RAUC) ===\n");
++    
++    /* Get MMC device from environment (set by board_late_init) */
++    mmc_dev = env_get_ulong("mmcdev", 10, 1);  /* Default to SD card */
++    printf(">>> Boot device: mmc %d (%s)\n", mmc_dev, 
++           mmc_dev == 0 ? "eMMC" : "SD Card");
++    
++    /* Try to boot from rootfs partition */
++    if (standard_try_boot_device(mmc_dev, CONFIG_STANDARD_ROOTFS_PART,
++                                  mmc_dev == 0 ? "eMMC" : "SD Card") == 0) {
++        /* Should not reach here on success */
++        return 0;
++    }
++    
++    printf("!!! FATAL: Boot failed!\n");
++    printf("!!! Resetting in 5 seconds...\n");
++    mdelay(5000);
++    run_command("reset", 0);
++    
++    return 0;  /* Never reached */
++}
++
++U_BOOT_CMD(
++    standard_boot, 1, 0, do_standard_boot,
++    "Standard boot command",
++    "Boot from eMMC or SD Card based on mmcdev environment variable"
++);
++#endif /* CONFIG_STANDARD_BOOT */
+diff --git a/configs/imx8mq_evk_defconfig b/configs/imx8mq_evk_defconfig
+index 092cd2a65af..e70c94d010a 100644
+--- a/configs/imx8mq_evk_defconfig
++++ b/configs/imx8mq_evk_defconfig
+@@ -27,7 +27,7 @@ CONFIG_IMX_BOOTAUX=y
+ CONFIG_SYS_LOAD_ADDR=0x40400000
+ CONFIG_DEFAULT_DEVICE_TREE="fsl-imx8mq-ecu150a1"
+ CONFIG_REMAKE_ELF=y
+-CONFIG_BOOTCOMMAND="run sr_ir_v2_cmd;run distro_bootcmd;run bsp_bootcmd"
++CONFIG_BOOTCOMMAND="run sr_ir_v2_cmd;run standard_bootcmd"
+ CONFIG_SYS_MONITOR_LEN=524288
+ CONFIG_FIT=y
+ CONFIG_FIT_EXTERNAL_OFFSET=0x3000
+diff --git a/include/configs/imx8mq_evk.h b/include/configs/imx8mq_evk.h
+index ff51800ba48..901a896fd7f 100644
+--- a/include/configs/imx8mq_evk.h
++++ b/include/configs/imx8mq_evk.h
+@@ -83,6 +83,7 @@
+ 	BOOTENV \
+ 	SR_IR_V2_COMMAND \
+ 	JAILHOUSE_ENV \
++	CFG_EXTRA_ENV_STANDARD \
+ 	"prepare_mcore=setenv mcore_clk clk-imx8mq.mcore_booted;\0" \
+ 	"scriptaddr=0x43500000\0" \
+ 	"kernel_addr_r=" __stringify(CONFIG_SYS_LOAD_ADDR) "\0" \
+@@ -98,14 +99,14 @@
+ 	"bootm_size=0x10000000\0" \
+ 	"mmcdev="__stringify(CONFIG_SYS_MMC_ENV_DEV)"\0" \
+ 	"mmcpart=1\0" \
+-	"mmcroot=/dev/mmcblk1p2 rootwait rw\0" \
++	"mmcroot=/dev/mmcblk1p1 rootwait rw\0" \
+ 	"mmcautodetect=yes\0" \
+ 	"mmcargs=setenv bootargs ${jh_clk} ${mcore_clk} console=${console} root=${mmcroot}\0 " \
+ 	"loadbootscript=fatload mmc ${mmcdev}:${mmcpart} ${loadaddr} ${bsp_script};\0" \
+ 	"bootscript=echo Running bootscript from mmc ...; " \
+ 		"source\0" \
+-	"loadimage=load mmc ${mmcdev}:${mmcpart} ${loadaddr} ${image}\0" \
+-	"loadfdt=load mmc ${mmcdev}:${mmcpart} ${fdt_addr_r} ${fdtfile}\0" \
++	"loadimage=load mmc ${mmcdev}:${mmcpart} ${loadaddr} /boot/${image}\0" \
++	"loadfdt=load mmc ${mmcdev}:${mmcpart} ${fdt_addr_r} /boot/${fdtfile}\0" \
+ 	"mmcboot=echo Booting from mmc ...; " \
+ 		"run mmcargs; " \
+ 		"if test ${boot_fdt} = yes || test ${boot_fdt} = try; then " \
+@@ -117,7 +118,7 @@
+ 		"else " \
+ 			"echo wait for boot; " \
+ 		"fi;\0" \
+-	"emmcboot=echo Booting from emmc ...; setenv mmcdev 0; setenv mmcroot /dev/mmcblk0p2 rootwait rw;" \
++	"emmcboot=echo Booting from emmc ...; setenv mmcdev 0; setenv mmcroot /dev/mmcblk0p1 rootwait rw;" \
+ 		"run mmcargs; " \
+ 		"mmc dev ${mmcdev};" \
+ 		"if run loadimage; then " \
+@@ -176,6 +177,17 @@
+ 			   "fi; " \
+ 		   "else run emmcboot; fi;"
+ 
++
++#define CONFIG_DTB_FILE                  "fsl-imx8mq-ecu150a1.dtb"
++
++/* Standard Boot Related */
++#define CONFIG_STANDARD_BOOT
++#define CONFIG_STANDARD_ROOTFS_PART 1  /* rootfs partition number (p1) */
++
++#define CFG_EXTRA_ENV_STANDARD \
++    "standard_bootcmd=standard_boot\0"
++
++
+ /* Link Definitions */
+ 
+ #define CFG_SYS_INIT_RAM_ADDR        0x40000000

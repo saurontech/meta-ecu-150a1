@@ -1,40 +1,22 @@
-From 80750af3857e0cce7815ee863f33887abb4e713a Mon Sep 17 00:00:00 2001
-From: Wade Lin <varyccgo@gmail.com>
-Date: Fri, 11 Sep 2026 13:38:44 +0800
-Subject: [PATCH] imx8mq_ecu150a1-adv-uboot-imx.patch
-
-Upstream-Status: Inappropriate [embedded specific]
-Signed-off-by: Wade Lin <varyccgo@gmail.com>
----
- arch/arm/dts/Makefile                     |   1 +
- board/freescale/imx8mq_evk/Makefile       |   6 +-
- board/freescale/imx8mq_evk/imx8mq_evk.c   |   5 +-
- board/freescale/imx8mq_evk/imx8mq_evk.env |  33 ++++-
- board/freescale/imx8mq_evk/spl.c          |  10 +-
- common/autoboot.c                         | 147 +++++++++++++++++++++-
- configs/imx8mq_evk_defconfig              |  21 ++--
- include/configs/imx8mq_evk.h              |  12 +-
- 8 files changed, 210 insertions(+), 25 deletions(-)
-
 diff --git a/arch/arm/dts/Makefile b/arch/arm/dts/Makefile
-index 090bf4e6b24..d7112d96365 100644
+index e494d16ffce..17d6e07172e 100644
 --- a/arch/arm/dts/Makefile
 +++ b/arch/arm/dts/Makefile
-@@ -945,6 +945,7 @@ dtb-$(CONFIG_ARCH_IMX8M) += \
- 	imx8mn-ddr4-ab2.dtb \
- 	imx8mn-ab2.dtb \
- 	imx8mn-var-som-symphony.dtb \
+@@ -1152,6 +1152,7 @@ dtb-$(CONFIG_ARCH_IMX8M) += \
+ 	imx8mn-venice.dtb \
+ 	imx8mn-venice-gw7902.dtb \
+ 	imx8mq-evk.dtb \
 +	fsl-imx8mq-ecu150a1.dtb \
+ 	imx8mm-beacon-kit.dtb \
+ 	imx8mn-beacon-kit.dtb \
  	imx8mq-mnt-reform2.dtb \
- 	imx8mq-phanbell.dtb \
- 	imx8mp-data-modul-edm-sbc.dtb \
 diff --git a/board/freescale/imx8mq_evk/Makefile b/board/freescale/imx8mq_evk/Makefile
-index 63b7248b56a..b1983a62d78 100644
+index fd260bb1ec4..e70ab9ba5d5 100644
 --- a/board/freescale/imx8mq_evk/Makefile
 +++ b/board/freescale/imx8mq_evk/Makefile
 @@ -8,9 +8,5 @@ obj-y += imx8mq_evk.o
  
- ifdef CONFIG_XPL_BUILD
+ ifdef CONFIG_SPL_BUILD
  obj-y += spl.o
 -ifdef CONFIG_IMX8MQ_4GB_DDR_TIMING
 -obj-$(CONFIG_IMX8M_LPDDR4) += lpddr4_timing_4g.o
@@ -44,20 +26,20 @@ index 63b7248b56a..b1983a62d78 100644
 +obj-$(CONFIG_IMX8M_LPDDR4) += lpddr4_timing_1g.o lpddr4_timing_2g.o lpddr4_timing_4g.o lpddr4_timing_b0.o
  endif
 diff --git a/board/freescale/imx8mq_evk/imx8mq_evk.c b/board/freescale/imx8mq_evk/imx8mq_evk.c
-index 9bd0869253d..707d1b23664 100644
+index 607170e2d2c..d4c326249f4 100644
 --- a/board/freescale/imx8mq_evk/imx8mq_evk.c
 +++ b/board/freescale/imx8mq_evk/imx8mq_evk.c
-@@ -16,7 +16,7 @@
- #include <usb.h>
- #include <dwc3-uboot.h>
+@@ -33,7 +33,7 @@
+ 
+ DECLARE_GLOBAL_DATA_PTR;
  
 -#define UART_PAD_CTRL	(PAD_CTL_DSE6 | PAD_CTL_FSEL1)
 +#define UART_PAD_CTRL	(PAD_CTL_DSE6 | PAD_CTL_FSEL1 | PAD_CTL_PUE)
  
  #define WDOG_PAD_CTRL	(PAD_CTL_DSE6 | PAD_CTL_HYS | PAD_CTL_PUE)
  
-@@ -269,6 +269,9 @@ int board_late_init(void)
- 	env_set("board_rev", "iMX8MQ");
+@@ -300,6 +300,9 @@ int board_late_init(void)
+ 	board_late_mmc_env_init();
  #endif
  
 +	puts("DeviceName is ECU150A1.\n");
@@ -66,76 +48,11 @@ index 9bd0869253d..707d1b23664 100644
  	return 0;
  }
  
-diff --git a/board/freescale/imx8mq_evk/imx8mq_evk.env b/board/freescale/imx8mq_evk/imx8mq_evk.env
-index 2bc82db830f..ef3899b94ba 100644
---- a/board/freescale/imx8mq_evk/imx8mq_evk.env
-+++ b/board/freescale/imx8mq_evk/imx8mq_evk.env
-@@ -22,6 +22,7 @@ boot_fdt=try
- boot_targets=usb0 mmc1 mmc2 dhcp
- bootm_size=0x10000000
- console=ttymxc0,115200
-+earlycon=ec_imx6q,0x30860000,115200
- splashimage=0x50000000
- fdt_addr=0x43000000
- fdt_addr_r=0x43000000
-@@ -52,9 +53,9 @@ jh_mmcboot=setenv fdtfile imx8mq-evk-root.dtb;
- 		run mmcboot;
- 	else run jh_netboot; fi;
- jh_netboot=setenv fdtfile imx8mq-evk-root.dtb; setenv jh_clk kvm.enable_virt_at_load=false clk_ignore_unused mem=1872M; run netboot;
--mmcargs=setenv bootargs ${jh_clk} ${mcore_clk} console=${console} root=${mmcroot}
--loadimage=fatload mmc ${mmcdev}:${mmcpart} ${loadaddr} ${image}
--loadfdt=fatload mmc ${mmcdev}:${mmcpart} ${fdt_addr_r} ${fdtfile}
-+mmcargs=setenv bootargs ${jh_clk} ${mcore_clk} console=${console} earlycon=${earlycon} root=${mmcroot}
-+loadimage=load mmc ${mmcdev}:${mmcpart} ${loadaddr} ${image}
-+loadfdt=load mmc ${mmcdev}:${mmcpart} ${fdt_addr_r} ${fdtfile}
- mmcboot=echo Booting from mmc ...;
- 	run mmcargs;
- 	if test ${boot_fdt} = yes || test ${boot_fdt} = try; then
-@@ -66,7 +67,30 @@ mmcboot=echo Booting from mmc ...;
- 	else
- 		echo wait for boot;
- 	fi;
--netargs=setenv bootargs ${jh_clk} ${mcore_clk} console=${console} root=/dev/nfs
-+emmcboot=echo Booting from emmc ...; setenv mmcdev 0; setenv mmcroot /dev/mmcblk0p2 rootwait rw;
-+	run mmcargs;
-+	mmc dev ${mmcdev};
-+	if run loadimage; then
-+		if run loadfdt; then
-+			booti ${loadaddr} - ${fdt_addr_r};
-+		fi;
-+	fi;
-+advufile=advupdate.txt
-+ramrootfstype=ext2 rootwait
-+loadramdisk=load mmc ${mmcdev} ${initrd_addr} ramdisk.gz
-+advrargs=setenv bootargs console=${console} ${optargs} root=/dev/ram0 rw ramdisk_size=65536 initrd=${initrd_addr},64M rootfstype=${ramrootfstype}
-+advrfs=echo Advantech recovery file system ramdisk ...;
-+	setenv devnum ${mmcdev};
-+	setenv devtype mmc;
-+	run loadimage;
-+	run loadramdisk;
-+	run advrargs;
-+	if run loadfdt; then
-+		booti ${loadaddr} - ${fdt_addr_r};
-+	else
-+		booti ${loadaddr};
-+	fi
-+netargs=setenv bootargs ${jh_clk} console=${console} root=/dev/nfs
- 	ip=dhcp nfsroot=${serverip}:${nfsroot},v3,tcp
- netboot=echo Booting from net ...;
- 	run netargs;
-@@ -91,6 +115,7 @@ bsp_bootcmd=setenv opteeoverlay yes;echo Running BSP bootcmd ...;
- 		else
- 			run netboot;
- 		fi;
-+	else run emmcboot;
- 	fi;
- 
- #endif
 diff --git a/board/freescale/imx8mq_evk/spl.c b/board/freescale/imx8mq_evk/spl.c
-index c4f02655242..a0ebe323608 100644
+index c7775c326fc..9efeaa11b51 100644
 --- a/board/freescale/imx8mq_evk/spl.c
 +++ b/board/freescale/imx8mq_evk/spl.c
-@@ -52,7 +52,7 @@ static void spl_dram_init(void)
+@@ -53,7 +53,7 @@ static void spl_dram_init(void)
  #else
  	/* ddr init */
  	if (soc_rev() >= CHIP_REV_2_1)
@@ -144,7 +61,7 @@ index c4f02655242..a0ebe323608 100644
  	else
  		ddr_init(&dram_timing_b0);
  #endif
-@@ -233,6 +233,14 @@ void spl_board_init(void)
+@@ -234,6 +234,14 @@ void spl_board_init(void)
  			printf("\nsec_init failed!\n");
  	}
  
@@ -160,10 +77,10 @@ index c4f02655242..a0ebe323608 100644
  
  	puts("Normal Boot\n");
 diff --git a/common/autoboot.c b/common/autoboot.c
-index ec9f0fc4cbe..a1b9f9e3b54 100644
+index 1752dd58483..e00b75d3e78 100644
 --- a/common/autoboot.c
 +++ b/common/autoboot.c
-@@ -44,6 +44,136 @@ DECLARE_GLOBAL_DATA_PTR;
+@@ -43,6 +43,136 @@ DECLARE_GLOBAL_DATA_PTR;
  static int stored_bootdelay;
  static int menukey;
  
@@ -212,9 +129,9 @@ index ec9f0fc4cbe..a1b9f9e3b54 100644
 +	}
 +	else if (!strcmp(ifname, "nand"))
 +	{
-+		memset(buf, 0, sizeof(buf));
-+		sprintf(buf, "ubi part NAND.recovery && ubifsmount ubi0;ubifsload ${loadaddr} ${advufile};env import -t ${loadaddr} ${filesize}");
-+		run_command_list(buf, -1, 0);
++	memset(buf, 0, sizeof(buf));
++	sprintf(buf, "ubi part NAND.recovery && ubifsmount ubi0;ubifsload ${loadaddr} ${advufile};env import -t ${loadaddr} ${filesize}");
++	run_command_list(buf, -1, 0);
 +		run_command_list("ubifsumount", -1, 0);
 +		if (env_get_ulong("filesize", 16, 0) == 0) {
 +			// config file not found!
@@ -300,21 +217,20 @@ index ec9f0fc4cbe..a1b9f9e3b54 100644
  #if defined(CONFIG_AUTOBOOT_STOP_STR_CRYPT)
  #define AUTOBOOT_STOP_STR_CRYPT	CONFIG_AUTOBOOT_STOP_STR_CRYPT
  #else
-@@ -386,8 +516,11 @@ static int abortboot_single_key(int bootdelay)
+@@ -381,9 +511,11 @@ static int abortboot_single_key(int bootdelay)
+ 	 * Check if key already pressed
  	 */
  	if (tstc()) {	/* we got a key press	*/
- 		getchar();	/* consume input	*/
--		puts("\b\b\b 0");
--		abort = 1;	/* don't auto boot	*/
+-		getchar();	/* consume input	*/
 +		if (getchar() == 0x0d) // got enter key
 +		{
-+			puts("\b\b\b 0");
-+			abort = 1;	/* don't auto boot	*/
+ 		puts("\b\b\b 0");
+ 		abort = 1;	/* don't auto boot	*/
 +		}
  	}
  
  	while ((bootdelay > 0) && (!abort)) {
-@@ -396,6 +529,8 @@ static int abortboot_single_key(int bootdelay)
+@@ -392,6 +524,8 @@ static int abortboot_single_key(int bootdelay)
  		ts = get_timer(0);
  		do {
  			if (tstc()) {	/* we got a key press	*/
@@ -323,7 +239,7 @@ index ec9f0fc4cbe..a1b9f9e3b54 100644
  				int key;
  
  				abort  = 1;	/* don't auto boot	*/
-@@ -404,6 +539,7 @@ static int abortboot_single_key(int bootdelay)
+@@ -400,6 +534,7 @@ static int abortboot_single_key(int bootdelay)
  				if (IS_ENABLED(CONFIG_AUTOBOOT_USE_MENUKEY))
  					menukey = key;
  				break;
@@ -331,7 +247,7 @@ index ec9f0fc4cbe..a1b9f9e3b54 100644
  			}
  			udelay(10000);
  		} while (!abort && get_timer(ts) < 1000);
-@@ -527,6 +663,13 @@ void autoboot_command(const char *s)
+@@ -523,6 +658,13 @@ void autoboot_command(const char *s)
  		if (lock)
  			prev = disable_ctrlc(1); /* disable Ctrl-C checking */
  
@@ -346,34 +262,38 @@ index ec9f0fc4cbe..a1b9f9e3b54 100644
  
  		if (lock)
 diff --git a/configs/imx8mq_evk_defconfig b/configs/imx8mq_evk_defconfig
-index 42e35670124..3478eaca7f9 100644
+index 36715241505..092cd2a65af 100644
 --- a/configs/imx8mq_evk_defconfig
 +++ b/configs/imx8mq_evk_defconfig
-@@ -14,8 +14,8 @@ CONFIG_SYS_I2C_MXC_I2C1=y
- CONFIG_SYS_I2C_MXC_I2C2=y
+@@ -15,7 +15,7 @@ CONFIG_SYS_I2C_MXC_I2C2=y
  CONFIG_SYS_I2C_MXC_I2C3=y
  CONFIG_DM_GPIO=y
--CONFIG_DEFAULT_DEVICE_TREE="freescale/imx8mq-evk"
+ CONFIG_SPL_TEXT_BASE=0x7E1000
 -CONFIG_USB_TCPC=y
-+CONFIG_DEFAULT_DEVICE_TREE="freescale/fsl-imx8mq-ecu150a1"
 +#CONFIG_USB_TCPC=y
  CONFIG_TARGET_IMX8MQ_EVK=y
  CONFIG_DM_RESET=y
  CONFIG_SPL_MMC=y
-@@ -36,10 +36,11 @@ CONFIG_FIT_EXTERNAL_OFFSET=0x3000
+@@ -25,7 +25,7 @@ CONFIG_SPL_STACK=0x187ff0
+ CONFIG_SPL=y
+ CONFIG_IMX_BOOTAUX=y
+ CONFIG_SYS_LOAD_ADDR=0x40400000
+-CONFIG_DEFAULT_DEVICE_TREE="imx8mq-evk"
++CONFIG_DEFAULT_DEVICE_TREE="fsl-imx8mq-ecu150a1"
+ CONFIG_REMAKE_ELF=y
+ CONFIG_BOOTCOMMAND="run sr_ir_v2_cmd;run distro_bootcmd;run bsp_bootcmd"
+ CONFIG_SYS_MONITOR_LEN=524288
+@@ -34,7 +34,8 @@ CONFIG_FIT_EXTERNAL_OFFSET=0x3000
  CONFIG_SPL_LOAD_FIT=y
+ CONFIG_DISTRO_DEFAULTS=y
  CONFIG_OF_SYSTEM_SETUP=y
- CONFIG_BOOTCOMMAND="run sr_ir_v2_cmd;bootflow scan -lb; run bsp_bootcmd"
--CONFIG_DEFAULT_FDT_FILE="imx8mq-evk.dtb"
-+CONFIG_DEFAULT_FDT_FILE="fsl-imx8mq-ecu150a1.dtb"
- CONFIG_SYS_PBSIZE=1050
- CONFIG_BOARD_EARLY_INIT_F=y
- CONFIG_BOARD_LATE_INIT=y
+-CONFIG_SPL_MAX_SIZE=0x26000
 +#CONFIG_SPL_MAX_SIZE=0x26000
- CONFIG_SPL_MAX_SIZE=0x26000
- CONFIG_SPL_BOARD_INIT=y
- # CONFIG_SPL_SHARES_INIT_SP_ADDR is not set
-@@ -56,8 +57,9 @@ CONFIG_SYS_PROMPT="u-boot=> "
++CONFIG_SPL_MAX_SIZE=0x27000
+ CONFIG_SPL_HAS_BSS_LINKER_SECTION=y
+ CONFIG_SPL_BSS_START_ADDR=0x180000
+ CONFIG_SPL_BSS_MAX_SIZE=0x2000
+@@ -56,8 +57,9 @@ CONFIG_SYS_PBSIZE=1050
  CONFIG_SPL_USB_GADGET=y
  CONFIG_SPL_USB_SDP_SUPPORT=y
  # CONFIG_BOOTM_NETBSD is not set
@@ -385,10 +305,10 @@ index 42e35670124..3478eaca7f9 100644
  CONFIG_CMD_NVEDIT_EFI=y
  CONFIG_CMD_CRC32=y
  CONFIG_CRC32_VERIFY=y
-@@ -183,12 +185,13 @@ CONFIG_EFI_VAR_BUF_SIZE=139264
+@@ -182,10 +184,11 @@ CONFIG_EFI_VAR_BUF_SIZE=139264
  CONFIG_EFI_IGNORE_OSINDICATIONS=y
  CONFIG_EFI_CAPSULE_AUTHENTICATE=y
- CONFIG_EFI_CAPSULE_CRT_FILE="CRT.crt"
+ CONFIG_EFI_CAPSULE_ESL_FILE="CRT.esl"
 -CONFIG_OPTEE=y
 -CONFIG_CMD_OPTEE_RPMB=y
 +#CONFIG_OPTEE=y
@@ -401,38 +321,113 @@ index 42e35670124..3478eaca7f9 100644
 -CONFIG_FIT_SIGNATURE=y
 +#CONFIG_FIT_SIGNATURE=y
 +CONFIG_SMBIOS_PARSER=y
- 
- CONFIG_BOOTDEV_ETH=n
 diff --git a/include/configs/imx8mq_evk.h b/include/configs/imx8mq_evk.h
-index 00dcc4faf17..982ad92fe7a 100644
+index 7b308748f90..759347e123d 100644
 --- a/include/configs/imx8mq_evk.h
 +++ b/include/configs/imx8mq_evk.h
 @@ -11,6 +11,14 @@
  #include <asm/arch/imx-regs.h>
- #include <env/nxp/imx_env.h>
+ #include "imx_env.h"
  
 +#define ADV_IMX8_DDR_1G		0x0
-+#define ADV_IMX8_DDR_2G		0x1
-+#define ADV_IMX8_DDR_4G		0x2
++#define ADV_IMX8_DDR_2G     0x1
++#define ADV_IMX8_DDR_4G     0x2
 +
-+#define TEE_LOAD_ADDR_1G	0x7e000000
-+#define TEE_LOAD_ADDR_2G	0x7e000000
-+#define TEE_LOAD_ADDR_4G	0xfe000000
++#define TEE_LOAD_ADDR_1G 	0x7e000000
++#define TEE_LOAD_ADDR_2G 	0x7e000000
++#define TEE_LOAD_ADDR_4G 	0xfe000000
 +
- #ifdef CONFIG_XPL_BUILD
+ #ifdef CONFIG_SPL_BUILD
  /*#define CONFIG_ENABLE_DDR_TRAINING_DEBUG*/
  
-@@ -34,9 +42,7 @@
+@@ -39,6 +47,8 @@
+ #define BOOTENV
+ #endif
+ 
++#define CONSOLE					"console=ttymxc0,115200 earlycon=ec_imx6q,0x30860000,115200"
++
+ /*
+  * Another approach is add the clocks for inmates into clks_init_on
+  * in clk-imx8mq.c, then clk_ingore_unused could be removed.
+@@ -79,12 +89,12 @@
+ 	"bsp_script=boot.scr\0" \
+ 	"image=Image\0" \
+ 	"splashimage=0x50000000\0" \
+-	"console=ttymxc0,115200\0" \
++	" "CONSOLE" \0" \
+ 	"fdt_addr_r=0x43000000\0"			\
+ 	"fdt_addr=0x43000000\0"			\
+ 	"fdt_high=0xffffffffffffffff\0"		\
+ 	"boot_fdt=try\0" \
+-	"fdtfile=imx8mq-evk.dtb\0" \
++	"fdtfile=fsl-imx8mq-ecu150a1.dtb\0" \
+ 	"bootm_size=0x10000000\0" \
+ 	"mmcdev="__stringify(CONFIG_SYS_MMC_ENV_DEV)"\0" \
+ 	"mmcpart=1\0" \
+@@ -94,8 +104,8 @@
+ 	"loadbootscript=fatload mmc ${mmcdev}:${mmcpart} ${loadaddr} ${bsp_script};\0" \
+ 	"bootscript=echo Running bootscript from mmc ...; " \
+ 		"source\0" \
+-	"loadimage=fatload mmc ${mmcdev}:${mmcpart} ${loadaddr} ${image}\0" \
+-	"loadfdt=fatload mmc ${mmcdev}:${mmcpart} ${fdt_addr_r} ${fdtfile}\0" \
++	"loadimage=load mmc ${mmcdev}:${mmcpart} ${loadaddr} ${image}\0" \
++	"loadfdt=load mmc ${mmcdev}:${mmcpart} ${fdt_addr_r} ${fdtfile}\0" \
+ 	"mmcboot=echo Booting from mmc ...; " \
+ 		"run mmcargs; " \
+ 		"if test ${boot_fdt} = yes || test ${boot_fdt} = try; then " \
+@@ -107,7 +117,34 @@
+ 		"else " \
+ 			"echo wait for boot; " \
+ 		"fi;\0" \
+-	"netargs=setenv bootargs ${jh_clk} ${mcore_clk} console=${console} " \
++	"emmcboot=echo Booting from emmc ...; setenv mmcdev 0; setenv mmcroot /dev/mmcblk0p2 rootwait rw;" \
++		"run mmcargs; " \
++		"mmc dev ${mmcdev};" \
++		"if run loadimage; then " \
++			"if run loadfdt; then " \
++				"booti ${loadaddr} - ${fdt_addr_r}; " \
++			"fi; " \
++		"fi;\0" \
++	"advufile=advupdate.txt\0" \
++	"ramrootfstype=ext2 rootwait\0" \
++	"loadramdisk=load mmc ${mmcdev} ${initrd_addr} ramdisk.gz\0" \
++	"advrargs=setenv bootargs console=${console} " \
++		"${optargs} " \
++		"root=/dev/ram0 rw ramdisk_size=65536 "\
++		"initrd=${initrd_addr},64M " \
++		"rootfstype=${ramrootfstype}\0" \
++	"advrfs=echo Advantech recovery file system ramdisk ...; " \
++		"setenv devnum ${mmcdev}; " \
++		"setenv devtype mmc; " \
++		"run loadimage; " \
++		"run loadramdisk; " \
++		"run advrargs; " \
++		"if run loadfdt; then " \
++			"booti ${loadaddr} - ${fdt_addr_r}; " \
++		"else " \
++			"booti ${loadaddr};" \
++		"fi\0" \
++	"netargs=setenv bootargs ${jh_clk} console=${console} " \
+ 		"root=/dev/nfs " \
+ 		"ip=dhcp nfsroot=${serverip}:${nfsroot},v3,tcp\0" \
+ 	"netboot=echo Booting from net ...; " \
+@@ -137,7 +174,7 @@
+ 				   "else run netboot; " \
+ 				   "fi; " \
+ 			   "fi; " \
+-		   "fi;"
++		   "else run emmcboot; fi;"
+ 
+ /* Link Definitions */
+ 
+@@ -147,9 +184,7 @@
  
  #define CFG_SYS_SDRAM_BASE           0x40000000
  #define PHYS_SDRAM                      0x40000000
 -#define PHYS_SDRAM_SIZE			0xC0000000 /* 3GB DDR */
 -#define PHYS_SDRAM_2			0x100000000
 -#define PHYS_SDRAM_2_SIZE		0x40000000 /* 1GB */
-+#define PHYS_SDRAM_SIZE				SZ_4G /* 4GB DDR */
++#define PHYS_SDRAM_SIZE			SZ_4G /* 4GB DDR */
  
  #define CFG_MXC_UART_BASE		UART_BASE_ADDR(1)
  
--- 
-2.53.0
-

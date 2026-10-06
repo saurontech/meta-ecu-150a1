@@ -1,22 +1,8 @@
-From 52e9b8f1035474304d85da31b6c2124faf9a3dd6 Mon Sep 17 00:00:00 2001
-From: Wade Lin <varyccgo@gmail.com>
-Date: Fri, 11 Sep 2026 14:57:50 +0800
-Subject: [PATCH] adv_ecu.patch
-
-Upstream-Status: Inappropriate [embedded specific]
-Signed-off-by: Wade Lin <varyccgo@gmail.com>
----
- drivers/char/Kconfig  | 6 ++++++
- drivers/char/Makefile | 1 +
- drivers/rtc/Kconfig   | 9 +++++++++
- drivers/rtc/Makefile  | 1 +
- 4 files changed, 17 insertions(+)
-
 diff --git a/drivers/char/Kconfig b/drivers/char/Kconfig
-index f2c369123307..b73dfa880f45 100644
+index 624610f94277..90890b20b7ad 100644
 --- a/drivers/char/Kconfig
 +++ b/drivers/char/Kconfig
-@@ -132,6 +132,12 @@ config POWERNV_OP_PANEL
+@@ -131,6 +131,12 @@ config POWERNV_OP_PANEL
  
  	  If unsure, say M here to build it as a module called powernv-op-panel.
  
@@ -30,41 +16,39 @@ index f2c369123307..b73dfa880f45 100644
  
  config DS1620
 diff --git a/drivers/char/Makefile b/drivers/char/Makefile
-index b3cf205fb32d..f8862ca4b83f 100644
+index 4fb12f88b97a..d96ab4cdd091 100644
 --- a/drivers/char/Makefile
 +++ b/drivers/char/Makefile
-@@ -44,3 +44,4 @@ obj-$(CONFIG_XILLYBUS_CLASS)	+= xillybus/
+@@ -46,3 +46,4 @@ obj-$(CONFIG_XILLYBUS_CLASS)	+= xillybus/
  obj-$(CONFIG_POWERNV_OP_PANEL)	+= powernv-op-panel.o
  obj-$(CONFIG_ADI)		+= adi.o
  obj-$(CONFIG_HAVE_IMX_AMP)      += imx_amp/
-+obj-$(CONFIG_ECU_BOARD)         += ecu_board.o
++obj-$(CONFIG_ECU_BOARD)		+= ecu_board.o
 diff --git a/drivers/rtc/Kconfig b/drivers/rtc/Kconfig
-index 12572e8bca29..5d3a0143a6c4 100644
+index c2e928f48fc9..1a4c486a60d2 100644
 --- a/drivers/rtc/Kconfig
 +++ b/drivers/rtc/Kconfig
-@@ -2077,4 +2077,13 @@ config RTC_DRV_SSD202D
+@@ -2029,4 +2029,13 @@ config RTC_DRV_POLARFIRE_SOC
  	  This driver can also be built as a module, if so, the module
- 	  will be called "rtc-ssd20xd".
+ 	  will be called "rtc-mpfs".
  
 +config RTC_DRV_HT1382
-+	tristate "HT1382 RTC"
-+	help
-+	  If you say Y here you will get support for the
-+	  HOLTEK HT1282 RTC chips.
++        tristate "HT1382 RTC"
++        help
++          If you say Y here you will get support for the
++          HOLTEK HT1282 RTC chips.
 +
-+	  This driver can also be built as a module. If so, the module
-+	  will be called rtc-ht1382.
++          This driver can also be built as a module. If so, the module
++          will be called rtc-ht1382.
 +
  endif # RTC_CLASS
 diff --git a/drivers/rtc/Makefile b/drivers/rtc/Makefile
-index 637d78f2bba4..0fd49399e2aa 100644
+index d6b9b4abd85c..d3858d1f1490 100644
 --- a/drivers/rtc/Makefile
 +++ b/drivers/rtc/Makefile
-@@ -192,3 +192,4 @@ obj-$(CONFIG_RTC_DRV_WM8350)	+= rtc-wm8350.o
+@@ -189,3 +189,4 @@ obj-$(CONFIG_RTC_DRV_WM8350)	+= rtc-wm8350.o
  obj-$(CONFIG_RTC_DRV_X1205)	+= rtc-x1205.o
  obj-$(CONFIG_RTC_DRV_XGENE)	+= rtc-xgene.o
  obj-$(CONFIG_RTC_DRV_ZYNQMP)	+= rtc-zynqmp.o
 +obj-$(CONFIG_RTC_DRV_HT1382)    += rtc-ht1382.o
--- 
-2.53.0
 

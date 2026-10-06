@@ -6,7 +6,7 @@ SRC_URI += "\
 
 do_install:append(){
     install -d ${D}$${nonarch_base_libdir}/firmware/rtl_nic
-    install -m 0644 ${WORKDIR}/rtl_nic/rtl8168*.fw* ${D}${nonarch_base_libdir}/firmware/rtl_nic/
+    install -m 0644 ${UNPACKDIR}/rtl_nic/rtl8168*.fw* ${D}${nonarch_base_libdir}/firmware/rtl_nic/
 
     find ${D}${nonarch_base_libdir}/firmware -type f -exec chmod 644 '{}' ';'
     find ${D}${nonarch_base_libdir}/firmware -type f -exec chown root:root '{}' ';'
